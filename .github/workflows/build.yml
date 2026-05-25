@@ -31,7 +31,10 @@ jobs:
 
       - name: Create DMG
         run: |
-          hdiutil create -volname "WhatTime" -srcfolder dist/whattime_app_mac.app -ov -format UDZO dist/WhatTime-mac.dmg
+          mkdir -p /tmp/dmg_staging
+          cp -R dist/WhatTime.app /tmp/dmg_staging/
+          ln -s /Applications /tmp/dmg_staging/Applications
+          hdiutil create -volname "WhatTime" -srcfolder /tmp/dmg_staging -ov -format UDZO dist/WhatTime-mac.dmg
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

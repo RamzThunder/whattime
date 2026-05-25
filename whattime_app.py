@@ -542,8 +542,8 @@ class Api:
                 mount_point = os.path.join(tmp, 'mnt')
                 os.makedirs(mount_point, exist_ok=True)
                 subprocess.run(['hdiutil', 'attach', dmg_path, '-mountpoint', mount_point, '-nobrowse', '-quiet'], check=True)
-                new_app_tmp = os.path.join(tmp, 'whattime_app_mac.app')
-                subprocess.run(['cp', '-R', os.path.join(mount_point, 'whattime_app_mac.app'), new_app_tmp], check=True)
+                new_app_tmp = os.path.join(tmp, 'WhatTime.app')
+                subprocess.run(['cp', '-R', os.path.join(mount_point, 'WhatTime.app'), new_app_tmp], check=True)
                 subprocess.run(['hdiutil', 'detach', mount_point, '-quiet'])
                 if not getattr(sys, 'frozen', False):
                     return False

@@ -55,7 +55,7 @@ coll = COLLECT(
 )
 app = BUNDLE(
     coll,
-    name='whattime_app_mac.app',
+    name='WhatTime.app',
     icon='calendar.icns',
-    bundle_identifier=None,
+    bundle_identifier='com.whattime.app',
 )
