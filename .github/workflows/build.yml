@@ -7,7 +7,7 @@ on:
   workflow_dispatch:  # 수동 실행도 가능
 
 jobs:
-  build:
+  build-mac:
     runs-on: macos-latest
     permissions:
       contents: write
@@ -29,20 +29,64 @@ jobs:
         run: |
           pyinstaller whattime_app_mac.spec
 
-      - name: Zip the .app
+      - name: Create DMG
         run: |
-          cd dist
-          zip -r WhatTime.zip whattime_app_mac.app
+          hdiutil create -volname "WhatTime" -srcfolder dist/whattime_app_mac.app -ov -format UDZO dist/WhatTime-mac.dmg
 
-      - name: Upload artifact (for workflow_dispatch)
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: WhatTime-mac
-          path: dist/WhatTime.zip
+          path: dist/WhatTime-mac.dmg
 
-      - name: Create GitHub Release (tag push only)
-        if: startsWith(github.ref, 'refs/tags/')
+  build-win:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install pyinstaller pywebview bottle
+
+      - name: Build .exe with PyInstaller
+        run: |
+          pyinstaller whattime_app_win.spec
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WhatTime-win
+          path: dist/WhatTime.exe
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [build-mac, build-win]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download Mac artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: WhatTime-mac
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: WhatTime-win
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/WhatTime.zip
+          files: |
+            WhatTime-mac.dmg
+            WhatTime.exe
           generate_release_notes: true
