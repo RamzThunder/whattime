@@ -1,0 +1,27 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Build outputs
+build/
+dist/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.env
+venv/
+.venv/
+
+# User data (stored in ~/Library/Application Support/WhatTime at runtime)
+schedule_backup.json
+
+# IDE
+.vscode/
+.idea/
+
+# Claude Code local settings
+.claude/

@@ -1,0 +1,189 @@
+{
+  "full": [
+    {
+      "name": "수업 전",
+      "start": "08:00",
+      "end": "08:35"
+    },
+    {
+      "name": "1교시",
+      "start": "08:40",
+      "end": "09:25"
+    },
+    {
+      "name": "2교시",
+      "start": "09:35",
+      "end": "10:20"
+    },
+    {
+      "name": "3교시",
+      "start": "10:30",
+      "end": "11:15"
+    },
+    {
+      "name": "4교시",
+      "start": "11:25",
+      "end": "12:10"
+    },
+    {
+      "name": "점심 (1학년 5교시)",
+      "start": "12:15",
+      "end": "13:00"
+    },
+    {
+      "name": "5교시 (1학년 점심)",
+      "start": "13:00",
+      "end": "13:45"
+    },
+    {
+      "name": "6교시",
+      "start": "13:50",
+      "end": "14:35"
+    },
+    {
+      "name": "7교시",
+      "start": "14:45",
+      "end": "15:30"
+    },
+    {
+      "name": "영업시간",
+      "start": "08:20",
+      "end": "16:20",
+      "no_countdown": true
+    }
+  ],
+  "short": [
+    {
+      "name": "수업 전",
+      "start": "08:00",
+      "end": "08:35"
+    },
+    {
+      "name": "1교시",
+      "start": "08:40",
+      "end": "09:25"
+    },
+    {
+      "name": "2교시",
+      "start": "09:35",
+      "end": "10:20"
+    },
+    {
+      "name": "3교시",
+      "start": "10:30",
+      "end": "11:15"
+    },
+    {
+      "name": "4교시",
+      "start": "11:25",
+      "end": "12:10"
+    },
+    {
+      "name": "점심 (1학년 5교시)",
+      "start": "12:15",
+      "end": "13:00"
+    },
+    {
+      "name": "5교시 (1학년 점심)",
+      "start": "13:00",
+      "end": "13:45"
+    },
+    {
+      "name": "6교시",
+      "start": "13:50",
+      "end": "14:35"
+    },
+    {
+      "name": "수업 끝^-^",
+      "start": "14:35",
+      "end": "16:20"
+    }
+  ],
+  "short_days": [
+    3,
+    5
+  ],
+  "personal": {
+    "1": [
+      {
+        "name": "",
+        "room": ""
+      },
+      {
+        "name": "",
+        "room": ""
+      },
+      {
+        "name": "",
+        "room": ""
+      },
+      {
+        "name": "",
+        "room": ""
+      },
+      {
+        "name": "",
+        "room": ""
+      },
+      {
+        "name": "",
+        "room": ""
+      },
+      {
+        "name": "",
+        "room": ""
+      },
+      {
+        "name": "",
+        "room": ""
+      },
+      {
+        "name": "",
+        "room": ""
+      },
+      {
+        "name": "",
+        "room": ""
+      },
+      {
+        "name": "",
+        "room": ""
+      }
+    ],
+    "2": [],
+    "3": [],
+    "4": [],
+    "5": []
+  },
+  "has_bg": true,
+  "opacity": 100,
+  "rest_days": [
+    0,
+    6
+  ],
+  "rest_schedules": {
+    "0": [],
+    "1": [],
+    "2": [],
+    "3": [],
+    "4": [],
+    "5": [],
+    "6": []
+  },
+  "custom_colors_bg": [],
+  "custom_colors": [],
+  "custom_colors_inactive": [],
+  "custom_colors_countdown": [],
+  "custom_colors_no_countdown": [],
+  "top_bar_style": "mac",
+  "end_text": "",
+  "rest_status_text": "",
+  "rest_timer_prefix": "",
+  "bg_color": "#ffffff",
+  "active_color": "#000000",
+  "inactive_color": "#ffffff",
+  "countdown_color": "#2f6df6",
+  "no_countdown_color": "#787774",
+  "font_bold": false,
+  "font_family": ""
+}

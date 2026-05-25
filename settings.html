@@ -1,0 +1,1285 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic", sans-serif;
+    background: #f9f9f8;
+    color: #1a1a1a;
+    padding: 20px;
+    font-size: 14px;
+}
+h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; }
+.subtitle { font-size: 0.8rem; color: #888; margin-bottom: 16px; }
+
+.startup-section {
+    display: flex; align-items: center; justify-content: space-between;
+    background: white; border-radius: 10px; padding: 12px 16px;
+    margin-bottom: 12px; border: 1.5px solid #eee;
+}
+.startup-label { font-size: 0.9rem; font-weight: 500; }
+.startup-desc { font-size: 0.75rem; color: #999; margin-top: 2px; }
+
+.toggle-wrap { flex-shrink: 0; margin-left: 12px; }
+.toggle-input { display: none; }
+.toggle-label {
+    display: block; width: 44px; height: 24px; border-radius: 12px;
+    background: #ddd; cursor: pointer; position: relative;
+    transition: background 0.2s;
+}
+.toggle-label::after {
+    content: ''; position: absolute; top: 3px; left: 3px;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: white; transition: left 0.2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.toggle-input:checked + .toggle-label { background: #000; }
+.toggle-input:checked + .toggle-label::after { left: 23px; }
+
+.divider { height: 1px; background: #eee; margin-bottom: 16px; }
+
+.tabs { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+.tab-btn {
+    padding: 6px 12px; border-radius: 20px; border: 1.5px solid #ddd;
+    background: white; cursor: pointer; font-size: 0.82rem; font-weight: 500;
+    color: #555; transition: all 0.15s;
+}
+.tab-btn.active { background: #000; color: #fff; border-color: #000; }
+
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+.days-row { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+.day-chip {
+    padding: 4px 12px; border-radius: 14px; border: 1.5px solid #ddd;
+    background: white; cursor: pointer; font-size: 0.8rem; color: #555;
+    transition: all 0.15s; user-select: none;
+}
+.day-chip.selected { background: #000; color: #fff; border-color: #000; }
+
+.schedule-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.period-row {
+    display: grid;
+    grid-template-columns: 16px 1fr 90px 90px 32px 32px;
+    gap: 6px; align-items: center;
+}
+.period-row input {
+    width: 100%; padding: 6px 8px; border: 1.5px solid #e0e0e0;
+    border-radius: 7px; font-size: 0.85rem; background: white;
+    font-family: inherit; color: #1a1a1a; transition: border-color 0.15s;
+}
+.period-row input:focus { outline: none; border-color: #000; }
+.period-row input.time-input { text-align: center; }
+
+.del-btn {
+    width: 28px; height: 28px; border-radius: 7px; border: none;
+    background: #f1f1ef; color: #999; cursor: pointer; font-size: 1rem;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s;
+}
+.del-btn:hover { background: #ffe0e0; color: #e00; }
+
+.no-cd-btn {
+    width: 28px; height: 28px; border-radius: 7px; border: 1.5px solid #e8e8e8;
+    background: white; color: #d0d0d0; cursor: pointer; font-size: 0.85rem;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s; font-family: inherit;
+}
+.no-cd-btn:hover { border-color: #aaa; color: #888; }
+.no-cd-btn.excluded { background: #f1f1ef; color: #555; border-color: #aaa; }
+
+.add-btn {
+    width: 100%; padding: 8px; border-radius: 8px; border: 1.5px dashed #ccc;
+    background: white; color: #888; cursor: pointer; font-size: 0.85rem;
+    transition: all 0.15s;
+}
+.add-btn:hover { border-color: #000; color: #000; }
+
+.col-headers {
+    display: grid;
+    grid-template-columns: 16px 1fr 90px 90px 32px 32px;
+    gap: 6px; margin-bottom: 4px;
+}
+.col-headers span { font-size: 0.75rem; color: #aaa; padding-left: 2px; }
+
+.personal-row {
+    grid-template-columns: 1fr 1fr 80px;
+}
+.personal-col-headers {
+    grid-template-columns: 1fr 1fr 80px;
+}
+.period-label {
+    font-size: 0.85rem; color: #555; padding: 6px 8px;
+    background: #f5f5f4; border-radius: 7px; border: 1.5px solid #e8e8e8;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.footer {
+    display: flex; gap: 8px; justify-content: flex-end;
+    margin-top: 20px; padding-top: 16px; border-top: 1px solid #eee;
+}
+.btn {
+    padding: 8px 20px; border-radius: 8px; border: none;
+    cursor: pointer; font-size: 0.9rem; font-weight: 500; font-family: inherit;
+    transition: opacity 0.15s;
+}
+.btn:hover { opacity: 0.8; }
+.btn-cancel { background: #f1f1ef; color: #555; }
+.btn-save { background: #000; color: #fff; }
+
+.offset-section {
+    display: flex; align-items: center; justify-content: space-between;
+    background: white; border-radius: 10px; padding: 12px 16px;
+    margin-bottom: 12px; border: 1.5px solid #eee;
+}
+.offset-control {
+    display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: 12px;
+}
+.offset-btn {
+    width: 28px; height: 28px; border-radius: 7px; border: 1.5px solid #ddd;
+    background: white; cursor: pointer; font-size: 1.1rem; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s; color: #333; line-height: 1;
+}
+.offset-btn:hover { background: #f1f1ef; border-color: #aaa; }
+.offset-value {
+    min-width: 44px; text-align: center; font-weight: 600; font-size: 0.9rem;
+}
+
+.text-section {
+    background: white; border-radius: 10px; padding: 12px 16px;
+    margin-bottom: 12px; border: 1.5px solid #eee;
+}
+.text-section-title {
+    font-size: 0.9rem; font-weight: 500; margin-bottom: 10px;
+}
+.text-row {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+}
+.text-row:last-child { margin-bottom: 0; }
+.text-row-label {
+    font-size: 0.78rem; color: #666; width: 108px; flex-shrink: 0;
+}
+.text-row input {
+    flex: 1; padding: 5px 8px; border: 1.5px solid #e0e0e0;
+    border-radius: 7px; font-size: 0.82rem; background: white;
+    font-family: inherit; color: #1a1a1a; transition: border-color 0.15s;
+}
+.text-row input:focus { outline: none; border-color: #000; }
+
+.rest-toggle-row {
+    display: flex; align-items: center; justify-content: space-between;
+    background: white; border-radius: 10px; padding: 10px 14px;
+    border: 1.5px solid #eee; margin-bottom: 14px;
+}
+.rest-toggle-label { font-size: 0.88rem; font-weight: 500; color: #333; }
+
+.preview-section {
+    background: white; border-radius: 10px; padding: 12px 16px;
+    margin-bottom: 12px; border: 1.5px solid #eee;
+}
+.preview-controls {
+    display: flex; align-items: center; gap: 6px; margin-top: 8px; flex-wrap: wrap;
+}
+.preview-select, .preview-num {
+    padding: 5px 8px; border: 1.5px solid #e0e0e0; border-radius: 7px;
+    font-size: 0.82rem; font-family: inherit; background: white; color: #1a1a1a;
+}
+.preview-num { width: 46px; text-align: center; }
+.preview-unit { font-size: 0.78rem; color: #888; }
+.preview-apply {
+    padding: 5px 12px; border-radius: 7px; border: none;
+    background: #000; color: #fff; cursor: pointer; font-size: 0.82rem;
+    font-family: inherit; transition: opacity 0.15s;
+}
+.preview-apply:hover { opacity: 0.75; }
+.preview-clear {
+    padding: 5px 12px; border-radius: 7px; border: 1.5px solid #ddd;
+    background: white; color: #555; cursor: pointer; font-size: 0.82rem;
+    font-family: inherit; transition: all 0.15s;
+}
+.preview-clear:hover { border-color: #999; }
+
+.toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: #000; color: #fff; padding: 8px 20px; border-radius: 20px;
+    font-size: 0.85rem; opacity: 0; transition: opacity 0.3s;
+    pointer-events: none; white-space: nowrap;
+}
+.toast.show { opacity: 1; }
+
+.drag-handle {
+    display: flex; align-items: center; justify-content: center;
+    cursor: grab; color: #ccc; font-size: 12px; user-select: none;
+    line-height: 1; padding: 0 1px;
+}
+.drag-handle:hover { color: #888; }
+.drag-handle:active { cursor: grabbing; }
+.period-row.dragging { opacity: 0.3; }
+.period-row.drag-over-top { border-top: 2px solid #000; margin-top: -2px; }
+.period-row.drag-over-bottom { border-bottom: 2px solid #000; }
+
+.color-swatch-wrap { position: relative; display: inline-flex; }
+.color-swatch {
+    width: 24px; height: 24px; border-radius: 6px; cursor: pointer;
+    flex-shrink: 0; outline-offset: 2px; transition: transform 0.1s;
+}
+.color-swatch:hover { transform: scale(1.12); }
+.color-swatch.empty { border: 1.5px dashed #ccc; background: white; }
+.swatch-del {
+    display: none; position: absolute; top: -5px; right: -5px;
+    background: white; border: 1px solid #ddd; border-radius: 50%;
+    width: 14px; height: 14px; font-size: 9px; line-height: 14px;
+    text-align: center; cursor: pointer; color: #888; z-index: 1;
+}
+.color-swatch-wrap:hover .swatch-del { display: block; }
+.swatch-del:hover { background: #fee; color: #e00; border-color: #e00; }
+
+.font-select {
+    flex: 1; padding: 5px 8px; border: 1.5px solid #e0e0e0;
+    border-radius: 7px; font-size: 0.82rem; background: white;
+    font-family: inherit; color: #1a1a1a; cursor: pointer; outline: none;
+}
+.font-select:focus { border-color: #000; }
+.hex-add-btn {
+    padding: 4px 10px; border-radius: 7px; border: 1.5px solid #ddd;
+    background: white; color: #555; cursor: pointer; font-size: 0.8rem;
+    font-family: inherit; transition: all 0.15s; white-space: nowrap;
+}
+.hex-add-btn:hover { border-color: #000; color: #000; }
+
+.main-tabs {
+    display: flex; gap: 6px; margin-bottom: 16px;
+    border-bottom: 1.5px solid #eee; padding-bottom: 12px;
+}
+.main-tab-btn {
+    flex: 1; padding: 8px 8px; border-radius: 8px; border: 1.5px solid #ddd;
+    background: white; cursor: pointer; font-size: 0.82rem; font-weight: 600;
+    color: #555; transition: all 0.15s; font-family: inherit;
+}
+.main-tab-btn.active { background: #000; color: #fff; border-color: #000; }
+.main-panel { display: none; }
+.main-panel.active { display: block; }
+
+.bold-toggle-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 0; border-bottom: 1px solid #f0f0f0;
+}
+.bold-toggle-label { font-size: 0.82rem; color: #444; }
+
+.theme-section {
+    background: white; border-radius: 10px; padding: 12px 16px;
+    margin-bottom: 16px; border: 1.5px solid #eee;
+}
+.theme-section-title { font-size: 0.9rem; font-weight: 500; margin-bottom: 12px; }
+.theme-color-row {
+    margin-bottom: 14px; padding-bottom: 14px;
+    border-bottom: 1px solid #f0f0f0;
+}
+.theme-color-row:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+.theme-color-label { font-size: 0.78rem; color: #666; margin-bottom: 8px; font-weight: 500; }
+
+/* 데이터 관리 섹션 */
+.data-section {
+    background: white; border-radius: 10px; padding: 12px 16px;
+    margin-bottom: 12px; border: 1.5px solid #eee;
+}
+.data-section-title { font-size: 0.9rem; font-weight: 500; margin-bottom: 10px; }
+.data-action-row { display: flex; gap: 8px; }
+.data-btn {
+    flex: 1; padding: 8px 4px; border-radius: 8px; border: 1.5px solid #ddd;
+    background: white; cursor: pointer; font-size: 0.8rem; font-weight: 500;
+    color: #555; transition: all 0.15s; font-family: inherit; text-align: center;
+}
+.data-btn:hover { border-color: #555; color: #000; background: #f9f9f8; }
+.data-btn.danger { border-color: #ffcdd2; color: #c62828; }
+.data-btn.danger:hover { background: #fff0f0; border-color: #c62828; }
+</style>
+</head>
+<body>
+
+<h2>시정 설정</h2>
+<p class="subtitle">교시 이름과 시작/종료 시간을 자유롭게 편집할 수 있어요.</p>
+
+<!-- 메인 탭 -->
+<div class="main-tabs">
+    <button class="main-tab-btn active" data-tab="settings" onclick="switchMainTab('settings')">⚙️ 설정</button>
+    <button class="main-tab-btn" data-tab="schedule" onclick="switchMainTab('schedule')">📅 일정 관리</button>
+    <button class="main-tab-btn" data-tab="advanced" onclick="switchMainTab('advanced')">🔧 고급</button>
+</div>
+
+<!-- ── 설정 패널 ── -->
+<div id="main-panel-settings" class="main-panel active">
+
+    <div class="startup-section">
+        <div>
+            <div class="startup-label">🚀 부팅 시 자동 실행</div>
+            <div class="startup-desc" id="startupDesc">로그인 시 자동으로 켜져요</div>
+        </div>
+        <div class="toggle-wrap">
+            <input type="checkbox" class="toggle-input" id="startupToggle" onchange="toggleStartup(this.checked)">
+            <label class="toggle-label" for="startupToggle"></label>
+        </div>
+    </div>
+
+    <div class="startup-section">
+        <div>
+            <div class="startup-label">🪟 상단 바 배치</div>
+            <div class="startup-desc" id="topBarStyleDesc"></div>
+        </div>
+        <div class="toggle-wrap">
+            <input type="checkbox" class="toggle-input" id="topBarStyleToggle" onchange="onTopBarStyleChange(this.checked)">
+            <label class="toggle-label" for="topBarStyleToggle"></label>
+        </div>
+    </div>
+
+    <!-- 글자 설정 -->
+    <div class="text-section" style="margin-bottom:12px;">
+        <div class="bold-toggle-row">
+            <span class="bold-toggle-label" style="font-size:0.9rem;font-weight:500;">글자 크기</span>
+            <div class="offset-control">
+                <button class="offset-btn" onclick="adjustFontSize(-0.1)">−</button>
+                <span class="offset-value" id="fontSizeDisplay">100%</span>
+                <button class="offset-btn" onclick="adjustFontSize(0.1)">+</button>
+            </div>
+        </div>
+        <div class="bold-toggle-row" style="border-bottom:none;padding-bottom:0;">
+            <span class="bold-toggle-label" style="font-size:0.9rem;font-weight:500;">글자 굵게</span>
+            <div class="toggle-wrap">
+                <input type="checkbox" class="toggle-input" id="fontBoldCheck" onchange="onFontBoldChange(this.checked)">
+                <label class="toggle-label" for="fontBoldCheck"></label>
+            </div>
+        </div>
+    </div>
+
+    <!-- 테마 설정 -->
+    <div class="theme-section">
+        <div class="theme-section-title">🎨 테마 설정</div>
+        <div class="theme-color-row">
+            <div class="theme-color-label">전체 배경</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                <span style="font-size:0.72rem;color:#aaa;width:28px;flex-shrink:0;">기본</span>
+                <div id="preset-bg" style="display:flex;gap:6px;"></div>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;">
+                <span style="font-size:0.72rem;color:#aaa;width:28px;flex-shrink:0;padding-top:5px;">저장</span>
+                <div id="custom-bg" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <div id="preview-bg" style="width:28px;height:28px;border-radius:7px;border:1.5px solid #ddd;flex-shrink:0;"></div>
+                <input type="text" id="hex-bg" maxlength="7" placeholder="#ffffff"
+                    style="width:90px;font-size:0.85rem;font-family:monospace;padding:4px 8px;border:1.5px solid #ddd;border-radius:7px;outline:none;"
+                    oninput="onPickerHexInput('bg',this.value)">
+                <button class="hex-add-btn" onclick="addPickerColor('bg')">+ 추가</button>
+            </div>
+        </div>
+        <div class="theme-color-row">
+            <div class="theme-color-label">진행바 배경</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                <span style="font-size:0.72rem;color:#aaa;width:28px;flex-shrink:0;">기본</span>
+                <div id="preset-inactive" style="display:flex;gap:6px;"></div>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;">
+                <span style="font-size:0.72rem;color:#aaa;width:28px;flex-shrink:0;padding-top:5px;">저장</span>
+                <div id="custom-inactive" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <div id="preview-inactive" style="width:28px;height:28px;border-radius:7px;border:1.5px solid #ddd;flex-shrink:0;"></div>
+                <input type="text" id="hex-inactive" maxlength="7" placeholder="#f1f1ef"
+                    style="width:90px;font-size:0.85rem;font-family:monospace;padding:4px 8px;border:1.5px solid #ddd;border-radius:7px;outline:none;"
+                    oninput="onPickerHexInput('inactive',this.value)">
+                <button class="hex-add-btn" onclick="addPickerColor('inactive')">+ 추가</button>
+            </div>
+        </div>
+        <div class="theme-color-row">
+            <div class="theme-color-label">진행바</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                <span style="font-size:0.72rem;color:#aaa;width:28px;flex-shrink:0;">기본</span>
+                <div id="preset-active" style="display:flex;gap:6px;"></div>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;">
+                <span style="font-size:0.72rem;color:#aaa;width:28px;flex-shrink:0;padding-top:5px;">저장</span>
+                <div id="custom-active" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <div id="preview-active" style="width:28px;height:28px;border-radius:7px;border:1.5px solid #ddd;flex-shrink:0;"></div>
+                <input type="text" id="hex-active" maxlength="7" placeholder="#000000"
+                    style="width:90px;font-size:0.85rem;font-family:monospace;padding:4px 8px;border:1.5px solid #ddd;border-radius:7px;outline:none;"
+                    oninput="onPickerHexInput('active',this.value)">
+                <button class="hex-add-btn" onclick="addPickerColor('active')">+ 추가</button>
+            </div>
+        </div>
+        <div class="theme-color-row">
+            <div class="theme-color-label">카운트다운 폰트 색상</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                <span style="font-size:0.72rem;color:#aaa;width:28px;flex-shrink:0;">기본</span>
+                <div id="preset-countdown" style="display:flex;gap:6px;"></div>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;">
+                <span style="font-size:0.72rem;color:#aaa;width:28px;flex-shrink:0;padding-top:5px;">저장</span>
+                <div id="custom-countdown" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <div id="preview-countdown" style="width:28px;height:28px;border-radius:7px;border:1.5px solid #ddd;flex-shrink:0;"></div>
+                <input type="text" id="hex-countdown" maxlength="7" placeholder="#2f6df6"
+                    style="width:90px;font-size:0.85rem;font-family:monospace;padding:4px 8px;border:1.5px solid #ddd;border-radius:7px;outline:none;"
+                    oninput="onPickerHexInput('countdown',this.value)">
+                <button class="hex-add-btn" onclick="addPickerColor('countdown')">+ 추가</button>
+            </div>
+        </div>
+        <div class="theme-color-row">
+            <div class="theme-color-label">카운트다운 제외 블럭 색상 <span style="font-size:0.75em;color:#bbb;font-weight:400;">(⊘ 표시된 블럭)</span></div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                <span style="font-size:0.72rem;color:#aaa;width:28px;flex-shrink:0;">기본</span>
+                <div id="preset-no_countdown" style="display:flex;gap:6px;"></div>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;">
+                <span style="font-size:0.72rem;color:#aaa;width:28px;flex-shrink:0;padding-top:5px;">저장</span>
+                <div id="custom-no_countdown" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <div id="preview-no_countdown" style="width:28px;height:28px;border-radius:7px;border:1.5px solid #ddd;flex-shrink:0;"></div>
+                <input type="text" id="hex-no_countdown" maxlength="7" placeholder="#787774"
+                    style="width:90px;font-size:0.85rem;font-family:monospace;padding:4px 8px;border:1.5px solid #ddd;border-radius:7px;outline:none;"
+                    oninput="onPickerHexInput('no_countdown',this.value)">
+                <button class="hex-add-btn" onclick="addPickerColor('no_countdown')">+ 추가</button>
+            </div>
+        </div>
+    </div>
+
+
+</div><!-- /main-panel-settings -->
+
+<!-- ── 일정 관리 패널 ── -->
+<div id="main-panel-schedule" class="main-panel">
+
+    <div class="tabs">
+        <button class="tab-btn active" data-tab="full" onclick="switchTab('full')">📅 일반 시정</button>
+        <button class="tab-btn" data-tab="short" onclick="switchTab('short')">⚡ 단축 시정</button>
+        <button class="tab-btn" data-tab="personal" onclick="switchTab('personal')">📚 개인 시간표</button>
+        <button class="tab-btn" data-tab="rest" onclick="switchTab('rest')">🏖 쉬는 날</button>
+    </div>
+
+    <div id="shortDaysSection" style="display:none; margin-bottom:14px;">
+        <div style="font-size:0.8rem; color:#888; margin-bottom:6px;">단축수업 적용 요일</div>
+        <div class="days-row" id="daysRow"></div>
+    </div>
+
+    <div class="tab-panel active" id="panel-full">
+        <div class="col-headers">
+            <span></span><span>교시 이름</span><span style="text-align:center">시작</span><span style="text-align:center">종료</span><span style="text-align:center;font-size:0.7rem">제외</span><span></span>
+        </div>
+        <div class="schedule-list" id="list-full"></div>
+        <button class="add-btn" onclick="addRow('full')">+ 교시 추가</button>
+    </div>
+
+    <div class="tab-panel" id="panel-short">
+        <div class="col-headers">
+            <span></span><span>교시 이름</span><span style="text-align:center">시작</span><span style="text-align:center">종료</span><span style="text-align:center;font-size:0.7rem">제외</span><span></span>
+        </div>
+        <div class="schedule-list" id="list-short"></div>
+        <button class="add-btn" onclick="addRow('short')">+ 교시 추가</button>
+    </div>
+
+    <div class="tab-panel" id="panel-personal">
+        <div style="font-size:0.8rem; color:#888; margin-bottom:6px;">수업을 입력할 요일을 선택하세요</div>
+        <div class="days-row" id="personalDaysRow" style="margin-bottom:14px;"></div>
+        <div class="col-headers personal-col-headers">
+            <span>교시</span><span>수업명</span><span style="text-align:center">반</span>
+        </div>
+        <div class="schedule-list" id="list-personal"></div>
+    </div>
+
+    <div class="tab-panel" id="panel-rest">
+        <div style="font-size:0.8rem; color:#888; margin-bottom:6px;">편집할 요일을 선택하세요</div>
+        <div class="days-row" id="restDaySelectorRow" style="margin-bottom:14px;"></div>
+        <div class="rest-toggle-row">
+            <span class="rest-toggle-label" id="restToggleLabel">쉬는 날로 지정</span>
+            <div class="toggle-wrap">
+                <input type="checkbox" class="toggle-input" id="restDayToggleInput" onchange="toggleRestDayDesignation(this.checked)">
+                <label class="toggle-label" for="restDayToggleInput"></label>
+            </div>
+        </div>
+        <div style="font-size:0.8rem; color:#888; margin-bottom:6px;">쉬는 날 스케줄 <span style="font-weight:400; color:#bbb;">(비워두면 카운트다운만 표시)</span></div>
+        <div class="col-headers">
+            <span></span><span>이름</span><span style="text-align:center">시작</span><span style="text-align:center">종료</span><span style="text-align:center;font-size:0.7rem">제외</span><span></span>
+        </div>
+        <div class="schedule-list" id="list-rest"></div>
+        <button class="add-btn" onclick="addRestRow()">+ 일정 추가</button>
+    </div>
+
+</div><!-- /main-panel-schedule -->
+
+<!-- ── 고급 패널 ── -->
+<div id="main-panel-advanced" class="main-panel">
+
+    <!-- 컬러 카운트다운 -->
+    <div class="theme-section">
+        <div class="theme-section-title">🎨 컬러 카운트다운</div>
+        <div class="bold-toggle-row">
+            <div>
+                <div style="font-size:0.85rem;font-weight:500;color:#333;">효과 활성화</div>
+                <div style="font-size:0.75rem;color:#999;margin-top:2px;">개인 수업 종료 5초 전, 진행바 색상이 서서히 변해요</div>
+            </div>
+            <div class="toggle-wrap">
+                <input type="checkbox" class="toggle-input" id="bellAlertToggle" onchange="onBellAlertToggle(this.checked)">
+                <label class="toggle-label" for="bellAlertToggle"></label>
+            </div>
+        </div>
+        <div id="bellAlertColorSection" style="margin-top:14px;padding-top:14px;border-top:1px solid #f0f0f0;">
+            <div class="theme-color-label">변화 색상</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                <span style="font-size:0.72rem;color:#aaa;width:28px;flex-shrink:0;">기본</span>
+                <div id="preset-bell_alert" style="display:flex;gap:6px;"></div>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;">
+                <span style="font-size:0.72rem;color:#aaa;width:28px;flex-shrink:0;padding-top:5px;">저장</span>
+                <div id="custom-bell_alert" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <div id="preview-bell_alert" style="width:28px;height:28px;border-radius:7px;border:1.5px solid #ddd;flex-shrink:0;"></div>
+                <input type="text" id="hex-bell_alert" maxlength="7" placeholder="#ff3b30"
+                    style="width:90px;font-size:0.85rem;font-family:monospace;padding:4px 8px;border:1.5px solid #ddd;border-radius:7px;outline:none;"
+                    oninput="onPickerHexInput('bell_alert',this.value)">
+                <button class="hex-add-btn" onclick="addPickerColor('bell_alert')">+ 추가</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 텍스트 설정 -->
+    <div class="text-section">
+        <div class="text-section-title">✏️ 텍스트 설정</div>
+        <div class="text-row">
+            <span class="text-row-label">일정 종료 메시지</span>
+            <input type="text" id="endTextInput" placeholder="˚˖𓍢ִ✧˚.오늘 일정 종료">
+        </div>
+        <div class="text-row">
+            <span class="text-row-label">쉬는 날 상태 텍스트</span>
+            <input type="text" id="restStatusTextInput" placeholder="학교 생각을 왜 하지">
+        </div>
+        <div class="text-row">
+            <span class="text-row-label">쉬는 날 카운트다운</span>
+            <input type="text" id="restTimerPrefixInput" placeholder="월요일 출근까지">
+        </div>
+        <div class="text-row" style="flex-direction:column;align-items:flex-start;gap:6px;margin-top:4px;">
+            <span class="text-row-label">폰트</span>
+            <input type="text" id="fontSearch" placeholder="폰트 검색..."
+                style="width:100%;padding:5px 8px;border:1.5px solid #e0e0e0;border-radius:7px;font-size:0.82rem;font-family:inherit;outline:none;"
+                oninput="filterFonts(this.value)">
+            <select id="fontSelect" class="font-select" size="5"
+                style="width:100%;border-radius:7px;padding:4px 0;"
+                onchange="onFontChange(this.value)">
+                <option value="">시스템 기본</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- 종 시간 보정 -->
+    <div class="offset-section">
+        <div>
+            <div class="startup-label">⏱ 종 시간 보정</div>
+            <div class="startup-desc">학교 종과의 오차를 초 단위로 조정해요 (저장 시 적용)</div>
+        </div>
+        <div class="offset-control">
+            <button class="offset-btn" onclick="adjustOffset(-1)">−</button>
+            <span class="offset-value" id="offsetDisplay">0초</span>
+            <button class="offset-btn" onclick="adjustOffset(1)">+</button>
+        </div>
+    </div>
+
+    <!-- 시간 미리보기 -->
+    <div class="preview-section">
+        <div>
+            <div class="startup-label">🔍 시간 미리보기</div>
+            <div class="startup-desc">특정 요일·시각의 위젯을 미리 확인해요 (저장 안 됨)</div>
+        </div>
+        <div class="preview-controls">
+            <select id="previewDay" class="preview-select">
+                <option value="1">월요일</option><option value="2">화요일</option>
+                <option value="3">수요일</option><option value="4">목요일</option>
+                <option value="5">금요일</option><option value="6">토요일</option>
+                <option value="0">일요일</option>
+            </select>
+            <input type="number" id="previewHour" class="preview-num" min="0" max="23" value="9">
+            <span class="preview-unit">시</span>
+            <input type="number" id="previewMinute" class="preview-num" min="0" max="59" value="0">
+            <span class="preview-unit">분</span>
+            <input type="number" id="previewSecond" class="preview-num" min="0" max="59" value="0">
+            <span class="preview-unit">초</span>
+            <button class="preview-apply" onclick="applyPreview()">미리보기</button>
+            <button class="preview-clear" id="clearPreviewBtn" onclick="clearPreview()" style="display:none">해제</button>
+        </div>
+    </div>
+
+    <!-- 밀리초 표시 -->
+    <div class="startup-section">
+        <div>
+            <div class="startup-label">⏱ 밀리초 표시</div>
+            <div class="startup-desc">정시퇴근 카운트다운 등에서 소수점 이하를 표시해요</div>
+        </div>
+        <div class="toggle-wrap">
+            <input type="checkbox" class="toggle-input" id="showMsToggle" onchange="onShowMsChange(this.checked)">
+            <label class="toggle-label" for="showMsToggle"></label>
+        </div>
+    </div>
+
+    <!-- 데이터 관리 -->
+    <div class="data-section">
+        <div class="data-section-title">💾 데이터 관리</div>
+        <div class="data-action-row" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <button class="data-btn" onclick="exportData()">📤 백업</button>
+            <button class="data-btn" onclick="importData()">📥 복원</button>
+            <button class="data-btn" onclick="setAsDefault()">⭐ 기본값 지정</button>
+            <button class="data-btn danger" onclick="resetData()">🔄 초기화</button>
+        </div>
+        <div style="font-size:0.75rem;color:#bbb;margin-top:8px;">기본값 지정 후 초기화하면 지정한 설정으로 되돌아가요</div>
+    </div>
+
+</div><!-- /main-panel-advanced -->
+
+<div class="footer">
+    <button class="btn btn-cancel" onclick="cancel()">취소</button>
+    <button class="btn btn-save" onclick="save()">저장</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const TRANSPARENT_BG_CSS = 'repeating-conic-gradient(#d0d0d0 0% 25%, #fff 0% 50%) 0 0 / 8px 8px';
+
+const COLOR_PRESETS = {
+    bg:           ['#ffffff', '#f9f9f8', '#f5f5f4', '#1a1a1a', '#000000'],
+    inactive:     ['#ffffff', '#f1f1ef', '#f5f5f4', '#1a1a1a', '#000000'],
+    active:       ['#000000', '#787774', '#ffffff', '#2f6df6', '#eab308'],
+    countdown:    ['#2f6df6', '#000000', '#e74c3c', '#16a34a', '#9333ea'],
+    no_countdown: ['#787774', '#c4c4c0', '#9b9b9b', '#2f6df6', '#eab308'],
+    bell_alert:   ['#ff3b30', '#ff9500', '#ffcc00', '#af52de', '#2f6df6'],
+};
+const COLOR_DATA_KEY    = { bg: 'bg_color', active: 'active_color', inactive: 'inactive_color', countdown: 'countdown_color', no_countdown: 'no_countdown_color', bell_alert: 'bell_alert_color' };
+const CUSTOM_DATA_KEY   = { bg: 'custom_colors_bg', active: 'custom_colors', inactive: 'custom_colors_inactive', countdown: 'custom_colors_countdown', no_countdown: 'custom_colors_no_countdown', bell_alert: 'custom_colors_bell_alert' };
+
+function switchMainTab(panel) {
+    document.querySelectorAll('.main-tab-btn').forEach(b =>
+        b.classList.toggle('active', b.dataset.tab === panel));
+    document.querySelectorAll('.main-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('main-panel-' + panel).classList.add('active');
+}
+
+function showToast(msg) {
+    const toast = document.getElementById('toast');
+    toast.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2000);
+}
+
+function updatePickerOutlines(key, color) {
+    document.querySelectorAll(`#preset-${key} .color-swatch, #custom-${key} .color-swatch`).forEach(s => {
+        if (!s.dataset.color) return;
+        s.style.outline = s.dataset.color.toLowerCase() === color.toLowerCase()
+            ? '2.5px solid #555' : 'none';
+    });
+}
+
+function swatchBgCss(color) {
+    if (color === '') return `background:${TRANSPARENT_BG_CSS};border:1.5px solid #ccc;`;
+    return `background:${color};` + (color === '#ffffff' ? 'border:1.5px solid #ddd;' : '');
+}
+
+function setPickerColor(key, color) {
+    data[COLOR_DATA_KEY[key]] = color;
+    const prev = document.getElementById('preview-' + key);
+    if (prev) prev.style.background = color === '' ? TRANSPARENT_BG_CSS : color;
+    const hexEl = document.getElementById('hex-' + key);
+    if (hexEl) hexEl.value = color;
+    updatePickerOutlines(key, color);
+    window.pywebview.api.preview_theme_color(key, color);
+}
+
+function renderColorPicker(key) {
+    const saved = data[COLOR_DATA_KEY[key]];
+    const currentColor = (saved !== undefined && saved !== null && saved !== '') ? saved : COLOR_PRESETS[key][0];
+    const currentColorLower = currentColor.toLowerCase();
+
+    const presetContainer = document.getElementById('preset-' + key);
+    presetContainer.innerHTML = '';
+    COLOR_PRESETS[key].forEach(color => {
+        const s = document.createElement('div');
+        s.className = 'color-swatch';
+        s.dataset.color = color;
+        const isSelected = color.toLowerCase() === currentColorLower;
+        s.style.cssText = swatchBgCss(color) +
+            `outline:${isSelected ? '2.5px solid #555' : 'none'};outline-offset:2px;`;
+        s.onclick = () => setPickerColor(key, color);
+        presetContainer.appendChild(s);
+    });
+
+    const customContainer = document.getElementById('custom-' + key);
+    customContainer.innerHTML = '';
+    const customs = data[CUSTOM_DATA_KEY[key]] || [];
+    for (let i = 0; i < 10; i++) {
+        const wrap = document.createElement('div');
+        wrap.className = 'color-swatch-wrap';
+        const swatch = document.createElement('div');
+        swatch.className = 'color-swatch';
+        if (customs[i]) {
+            const color = customs[i];
+            swatch.dataset.color = color;
+            swatch.style.cssText = swatchBgCss(color) +
+                `outline:${color.toLowerCase()===currentColorLower?'2.5px solid #555':'none'};outline-offset:2px;`;
+            swatch.onclick = () => setPickerColor(key, color);
+            const del = document.createElement('span');
+            del.className = 'swatch-del';
+            del.textContent = '×';
+            del.onclick = (e) => { e.stopPropagation(); deletePickerColor(key, i); };
+            wrap.appendChild(del);
+        } else {
+            swatch.classList.add('empty');
+            swatch.title = '현재 색상 저장';
+            swatch.onclick = () => {
+                const hex = document.getElementById('hex-' + key).value;
+                if (/^#[0-9a-fA-F]{6}$/.test(hex)) savePickerColorToSlot(key, i, hex);
+            };
+        }
+        wrap.appendChild(swatch);
+        customContainer.appendChild(wrap);
+    }
+
+    const prev = document.getElementById('preview-' + key);
+    if (prev) prev.style.background = currentColor === '' ? TRANSPARENT_BG_CSS : currentColor;
+    const hexEl = document.getElementById('hex-' + key);
+    if (hexEl) hexEl.value = currentColor;
+}
+
+function addPickerColor(key) {
+    const hex = document.getElementById('hex-' + key).value;
+    if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return;
+    const ck = CUSTOM_DATA_KEY[key];
+    if (!data[ck]) data[ck] = [];
+    if (data[ck].length >= 10) return;
+    data[ck].push(hex);
+    renderColorPicker(key);
+}
+
+function deletePickerColor(key, index) {
+    const ck = CUSTOM_DATA_KEY[key];
+    if (!data[ck]) return;
+    data[ck].splice(index, 1);
+    renderColorPicker(key);
+}
+
+function savePickerColorToSlot(key, index, hex) {
+    const ck = CUSTOM_DATA_KEY[key];
+    if (!data[ck]) data[ck] = [];
+    data[ck][index] = hex;
+    setPickerColor(key, hex);
+    renderColorPicker(key);
+}
+
+function onPickerHexInput(key, val) {
+    if (/^#[0-9a-fA-F]{6}$/.test(val)) {
+        data[COLOR_DATA_KEY[key]] = val;
+        const prev = document.getElementById('preview-' + key);
+        if (prev) prev.style.background = val;
+        updatePickerOutlines(key, val);
+        window.pywebview.api.preview_theme_color(key, val);
+    }
+}
+
+let allFonts = [];
+
+function populateFontSelect(fonts, currentFont) {
+    const sel = document.getElementById('fontSelect');
+    sel.innerHTML = '<option value="">시스템 기본</option>';
+    fonts.forEach(f => {
+        const opt = document.createElement('option');
+        opt.value = f;
+        opt.textContent = f;
+        opt.style.fontFamily = `"${f}", sans-serif`;
+        if (f === currentFont) opt.selected = true;
+        sel.appendChild(opt);
+    });
+    if (!currentFont) sel.value = '';
+}
+
+function filterFonts(query) {
+    const filtered = query.trim()
+        ? allFonts.filter(f => f.toLowerCase().includes(query.toLowerCase()))
+        : allFonts;
+    populateFontSelect(filtered, data.font_family || '');
+}
+
+function onFontChange(val) {
+    data.font_family = val;
+    window.pywebview.api.preview_font(val);
+}
+
+function onFontBoldChange(checked) {
+    data.font_bold = checked;
+    window.pywebview.api.preview_bold(checked);
+}
+
+function adjustFontSize(delta) {
+    const current = data.font_scale || 1.0;
+    const next = Math.round((current + delta) * 10) / 10;
+    if (next < 0.5 || next > 2.0) return;
+    data.font_scale = next;
+    document.getElementById('fontSizeDisplay').textContent = Math.round(next * 100) + '%';
+    window.pywebview.api.preview_font_size(next);
+}
+
+function onShowMsChange(checked) {
+    data.show_ms = checked;
+    window.pywebview.api.preview_show_ms(checked);
+}
+
+async function exportData() {
+    const ok = await window.pywebview.api.export_data();
+    showToast(ok ? '백업 완료! ✓' : '백업하지 못했어요');
+}
+
+async function importData() {
+    const ok = await window.pywebview.api.import_data();
+    if (ok) {
+        await init();
+        showToast('불러왔어요! ✓');
+    } else {
+        showToast('파일을 불러오지 못했어요');
+    }
+}
+
+async function setAsDefault() {
+    if (!confirm('현재 설정을 기본값으로 저장할까요?\n이후 초기화 시 이 설정으로 되돌아가요.')) return;
+    await window.pywebview.api.set_as_default();
+    showToast('기본값으로 저장했어요! ✓');
+}
+
+async function resetData() {
+    if (!confirm('모든 설정을 기본값으로 초기화할까요?\n시정표와 테마 등 모든 데이터가 초기화돼요.')) return;
+    await window.pywebview.api.reset_data();
+    await init();
+    showToast('초기화했어요!');
+}
+
+function setupDragDrop(listId, getItems, rerender) {
+    const list = document.getElementById(listId);
+    let dragSrc = null;
+
+    list.addEventListener('dragstart', e => {
+        const handle = e.target.closest('.drag-handle');
+        if (!handle) { e.preventDefault(); return; }
+        const row = handle.closest('.period-row');
+        dragSrc = [...list.children].indexOf(row);
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setDragImage(row, row.offsetWidth / 2, row.offsetHeight / 2);
+        setTimeout(() => row.classList.add('dragging'), 0);
+    });
+
+    list.addEventListener('dragover', e => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        const row = e.target.closest('.period-row');
+        if (!row || dragSrc === null) return;
+        list.querySelectorAll('.drag-over-top, .drag-over-bottom').forEach(r =>
+            r.classList.remove('drag-over-top', 'drag-over-bottom'));
+        const rect = row.getBoundingClientRect();
+        row.classList.add(e.clientY < rect.top + rect.height / 2 ? 'drag-over-top' : 'drag-over-bottom');
+    });
+
+    list.addEventListener('dragleave', e => {
+        if (!list.contains(e.relatedTarget)) {
+            list.querySelectorAll('.drag-over-top, .drag-over-bottom').forEach(r =>
+                r.classList.remove('drag-over-top', 'drag-over-bottom'));
+        }
+    });
+
+    list.addEventListener('drop', e => {
+        e.preventDefault();
+        const row = e.target.closest('.period-row');
+        if (!row || dragSrc === null) return;
+        list.querySelectorAll('.drag-over-top, .drag-over-bottom').forEach(r =>
+            r.classList.remove('drag-over-top', 'drag-over-bottom'));
+        const rows = [...list.children];
+        const targetIdx = rows.indexOf(row);
+        if (targetIdx === dragSrc) { dragSrc = null; return; }
+        const rect = row.getBoundingClientRect();
+        let insertIdx = e.clientY < rect.top + rect.height / 2 ? targetIdx : targetIdx + 1;
+        if (insertIdx > dragSrc) insertIdx--;
+        const items = getItems();
+        const [moved] = items.splice(dragSrc, 1);
+        items.splice(insertIdx, 0, moved);
+        dragSrc = null;
+        rerender();
+    });
+
+    list.addEventListener('dragend', () => {
+        list.querySelectorAll('.dragging, .drag-over-top, .drag-over-bottom').forEach(r =>
+            r.classList.remove('dragging', 'drag-over-top', 'drag-over-bottom'));
+        dragSrc = null;
+    });
+}
+
+const DAY_NAMES = ["일","월","화","수","목","금","토"];
+const WEEKDAYS = [1,2,3,4,5];
+const ALL_DAYS_MON_FIRST = [1,2,3,4,5,6,0];
+
+let data = { full: [], short: [], short_days: [3, 5], rest_days: [0, 6], rest_schedules: {"0":[],"1":[],"2":[],"3":[],"4":[],"5":[],"6":[]} };
+let currentTab = 'full';
+let restDay = "0";
+
+async function init() {
+    data = await window.pywebview.api.get_schedule();
+    if (!data.personal) data.personal = {"1":[],"2":[],"3":[],"4":[],"5":[]};
+    if (!data.rest_days) data.rest_days = [0, 6];
+    if (!data.rest_schedules) {
+        data.rest_schedules = {"0":[],"1":[],"2":[],"3":[],"4":[],"5":[],"6":[]};
+        if (data.rest && data.rest.length > 0) {
+            data.rest_days.forEach(d => {
+                data.rest_schedules[String(d)] = JSON.parse(JSON.stringify(data.rest));
+            });
+        }
+    }
+    ["0","1","2","3","4","5","6"].forEach(d => {
+        if (!data.rest_schedules[d]) data.rest_schedules[d] = [];
+    });
+
+    renderList('full');
+    renderList('short');
+    renderDayChips();
+    renderPersonalDayChips();
+    renderPersonalList();
+    renderRestDaySelectorChips();
+    updateRestDayToggle();
+    renderRestSchedule();
+
+    document.getElementById('offsetDisplay').textContent = (data.time_offset_seconds || 0) + '초';
+    document.getElementById('endTextInput').value = data.end_text || '';
+    document.getElementById('restStatusTextInput').value = data.rest_status_text || '';
+    document.getElementById('restTimerPrefixInput').value = data.rest_timer_prefix || '';
+
+    if (!data.custom_colors_bg) data.custom_colors_bg = [];
+    if (!data.custom_colors) data.custom_colors = [];
+    if (!data.custom_colors_inactive) data.custom_colors_inactive = [];
+    if (!data.custom_colors_countdown) data.custom_colors_countdown = [];
+    if (!data.custom_colors_no_countdown) data.custom_colors_no_countdown = [];
+    if (!data.custom_colors_bell_alert) data.custom_colors_bell_alert = [];
+    data.custom_colors_bg = data.custom_colors_bg.filter(Boolean);
+    data.custom_colors = data.custom_colors.filter(Boolean);
+    data.custom_colors_inactive = data.custom_colors_inactive.filter(Boolean);
+    data.custom_colors_countdown = data.custom_colors_countdown.filter(Boolean);
+    data.custom_colors_no_countdown = data.custom_colors_no_countdown.filter(Boolean);
+    data.custom_colors_bell_alert = data.custom_colors_bell_alert.filter(Boolean);
+    renderColorPicker('bg');
+    renderColorPicker('active');
+    renderColorPicker('inactive');
+    renderColorPicker('countdown');
+    renderColorPicker('no_countdown');
+    renderColorPicker('bell_alert');
+
+    const bellEnabled = !!data.bell_alert_enabled;
+    document.getElementById('bellAlertToggle').checked = bellEnabled;
+    document.getElementById('bellAlertColorSection').style.display = bellEnabled ? 'block' : 'none';
+
+    const scale = data.font_scale || 1.0;
+    document.getElementById('fontSizeDisplay').textContent = Math.round(scale * 100) + '%';
+    document.getElementById('fontBoldCheck').checked = !!data.font_bold;
+
+    if (!allFonts.length) {
+        allFonts = await window.pywebview.api.get_system_fonts();
+    }
+    populateFontSelect(allFonts, data.font_family || '');
+
+    document.getElementById('showMsToggle').checked = data.show_ms !== false;
+
+    const isMac = navigator.platform.startsWith('Mac');
+    document.getElementById('startupDesc').textContent =
+        isMac ? 'Mac 로그인 시 자동으로 켜져요' : 'Windows 시작 시 자동으로 켜져요';
+
+    const topBarStyle = data.top_bar_style || (isMac ? 'mac' : 'windows');
+    const isWinStyle = topBarStyle === 'windows';
+    document.getElementById('topBarStyleToggle').checked = isWinStyle;
+    document.getElementById('topBarStyleDesc').textContent =
+        isWinStyle ? 'Windows 스타일: ⚙️ ▣ ⊟  /  📌 − ✕' : 'Mac 스타일: ✕ − 📌  /  ▣ ⊟ ⚙️';
+
+    const enabled = await window.pywebview.api.get_startup_enabled();
+    document.getElementById('startupToggle').checked = enabled;
+}
+
+function applyPreview() {
+    const day = parseInt(document.getElementById('previewDay').value);
+    const hour = parseInt(document.getElementById('previewHour').value);
+    const minute = parseInt(document.getElementById('previewMinute').value);
+    const second = parseInt(document.getElementById('previewSecond').value) || 0;
+    const now = new Date();
+    const dayDiff = day - now.getDay();
+    const targetSecs = hour*3600 + minute*60 + second;
+    const currentSecs = now.getHours()*3600 + now.getMinutes()*60 + now.getSeconds();
+    const offsetSeconds = Math.round(dayDiff * 86400 + (targetSecs - currentSecs));
+    window.pywebview.api.set_preview_offset(offsetSeconds);
+    document.getElementById('clearPreviewBtn').style.display = 'inline-block';
+}
+
+function clearPreview() {
+    window.pywebview.api.clear_preview_offset();
+    document.getElementById('clearPreviewBtn').style.display = 'none';
+}
+
+function adjustOffset(delta) {
+    data.time_offset_seconds = (data.time_offset_seconds || 0) + delta;
+    document.getElementById('offsetDisplay').textContent = data.time_offset_seconds + '초';
+}
+
+async function toggleStartup(enabled) {
+    await window.pywebview.api.set_startup(enabled);
+}
+
+function onBellAlertToggle(checked) {
+    data.bell_alert_enabled = checked;
+    document.getElementById('bellAlertColorSection').style.display = checked ? 'block' : 'none';
+}
+
+function onTopBarStyleChange(checked) {
+    data.top_bar_style = checked ? 'windows' : 'mac';
+    document.getElementById('topBarStyleDesc').textContent =
+        checked ? 'Windows 스타일: ⚙️ ▣ ⊟  /  📌 − ✕' : 'Mac 스타일: ✕ − 📌  /  ▣ ⊟ ⚙️';
+}
+
+function renderDayChips() {
+    const row = document.getElementById('daysRow');
+    row.innerHTML = '';
+    WEEKDAYS.forEach(d => {
+        const chip = document.createElement('div');
+        chip.className = 'day-chip' + (data.short_days.includes(d) ? ' selected' : '');
+        chip.textContent = DAY_NAMES[d] + '요일';
+        chip.onclick = () => toggleDay(d, chip);
+        row.appendChild(chip);
+    });
+}
+
+function toggleDay(d, chip) {
+    if (data.short_days.includes(d)) {
+        data.short_days = data.short_days.filter(x => x !== d);
+        chip.classList.remove('selected');
+    } else {
+        data.short_days.push(d);
+        chip.classList.add('selected');
+    }
+}
+
+function renderRestDaySelectorChips() {
+    const row = document.getElementById('restDaySelectorRow');
+    row.innerHTML = '';
+    ALL_DAYS_MON_FIRST.forEach(d => {
+        const chip = document.createElement('div');
+        const isRest = (data.rest_days || []).includes(d);
+        chip.className = 'day-chip' + (String(d) === restDay ? ' selected' : '');
+        chip.innerHTML = DAY_NAMES[d] + '요일' + (isRest ? ' <span style="font-size:0.75em">🏖</span>' : '');
+        chip.onclick = () => {
+            restDay = String(d);
+            renderRestDaySelectorChips();
+            updateRestDayToggle();
+            renderRestSchedule();
+        };
+        row.appendChild(chip);
+    });
+}
+
+function updateRestDayToggle() {
+    const d = parseInt(restDay);
+    document.getElementById('restDayToggleInput').checked = (data.rest_days || []).includes(d);
+    document.getElementById('restToggleLabel').textContent = DAY_NAMES[d] + '요일을 쉬는 날로 지정';
+}
+
+function toggleRestDayDesignation(enabled) {
+    const d = parseInt(restDay);
+    if (!data.rest_days) data.rest_days = [];
+    if (enabled) {
+        if (!data.rest_days.includes(d)) data.rest_days.push(d);
+    } else {
+        data.rest_days = data.rest_days.filter(x => x !== d);
+    }
+    renderRestDaySelectorChips();
+}
+
+function renderRestSchedule() {
+    if (!data.rest_schedules[restDay]) data.rest_schedules[restDay] = [];
+    const list = document.getElementById('list-rest');
+    const items = data.rest_schedules[restDay];
+    list.innerHTML = '';
+    items.forEach((item, i) => {
+        const row = document.createElement('div');
+        row.className = 'period-row';
+        const noCD = !!item.no_countdown;
+        row.innerHTML = `
+            <span class="drag-handle" draggable="true">⠿</span>
+            <input type="text" value="${item.name}" placeholder="일정 이름"
+                oninput="data.rest_schedules['${restDay}'][${i}].name=this.value">
+            <input type="text" class="time-input" value="${item.start}" placeholder="08:00"
+                oninput="data.rest_schedules['${restDay}'][${i}].start=this.value">
+            <input type="text" class="time-input" value="${item.end}" placeholder="09:00"
+                oninput="data.rest_schedules['${restDay}'][${i}].end=this.value">
+            <button class="no-cd-btn${noCD?' excluded':''}"
+                onclick="toggleRestNoCountdown(${i})"
+                title="카운트다운 제외${noCD?' (적용됨)':''}">⊘</button>
+            <button class="del-btn" onclick="delRestRow(${i})">×</button>
+        `;
+        list.appendChild(row);
+    });
+}
+
+function toggleRestNoCountdown(i) {
+    data.rest_schedules[restDay][i].no_countdown = !data.rest_schedules[restDay][i].no_countdown;
+    renderRestSchedule();
+}
+
+function addRestRow() {
+    if (!data.rest_schedules[restDay]) data.rest_schedules[restDay] = [];
+    data.rest_schedules[restDay].push({ name: "", start: "00:00", end: "00:00" });
+    renderRestSchedule();
+    const rows = document.querySelectorAll('#list-rest .period-row');
+    if (rows.length > 0) rows[rows.length-1].querySelector('input').focus();
+}
+
+function delRestRow(i) {
+    data.rest_schedules[restDay].splice(i, 1);
+    renderRestSchedule();
+}
+
+function renderList(type) {
+    const list = document.getElementById('list-' + type);
+    list.innerHTML = '';
+    data[type].forEach((item, i) => {
+        const row = document.createElement('div');
+        row.className = 'period-row';
+        const noCD = !!item.no_countdown;
+        row.innerHTML = `
+            <span class="drag-handle" draggable="true">⠿</span>
+            <input type="text" value="${item.name}" placeholder="교시 이름"
+                oninput="data['${type}'][${i}].name=this.value">
+            <input type="text" class="time-input" value="${item.start}" placeholder="08:00"
+                oninput="data['${type}'][${i}].start=this.value">
+            <input type="text" class="time-input" value="${item.end}" placeholder="09:00"
+                oninput="data['${type}'][${i}].end=this.value">
+            <button class="no-cd-btn${noCD?' excluded':''}"
+                onclick="toggleNoCountdown('${type}', ${i})"
+                title="카운트다운 제외${noCD?' (적용됨)':''}">⊘</button>
+            <button class="del-btn" onclick="delRow('${type}', ${i})">×</button>
+        `;
+        list.appendChild(row);
+    });
+}
+
+function toggleNoCountdown(type, i) {
+    data[type][i].no_countdown = !data[type][i].no_countdown;
+    renderList(type);
+}
+
+function addRow(type) {
+    data[type].push({ name: "", start: "00:00", end: "00:00" });
+    renderList(type);
+    const rows = document.querySelectorAll(`#list-${type} .period-row`);
+    if (rows.length > 0) rows[rows.length-1].querySelector('input').focus();
+}
+
+function delRow(type, i) {
+    data[type].splice(i, 1);
+    renderList(type);
+}
+
+function switchTab(tab) {
+    currentTab = tab;
+    document.querySelectorAll('.tab-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.tab === tab);
+    });
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('panel-' + tab).classList.add('active');
+    document.getElementById('shortDaysSection').style.display = tab === 'short' ? 'block' : 'none';
+}
+
+async function save() {
+    data.end_text = document.getElementById('endTextInput').value;
+    data.rest_status_text = document.getElementById('restStatusTextInput').value;
+    data.rest_timer_prefix = document.getElementById('restTimerPrefixInput').value;
+    data.show_ms = document.getElementById('showMsToggle').checked;
+    ['bg', 'active', 'inactive', 'countdown', 'no_countdown'].forEach(key => {
+        const hex = document.getElementById('hex-' + key).value;
+        if (/^#[0-9a-fA-F]{6}$/.test(hex)) data[COLOR_DATA_KEY[key]] = hex;
+    });
+    data.font_bold = document.getElementById('fontBoldCheck').checked;
+    data.font_family = document.getElementById('fontSelect').value;
+    await window.pywebview.api.save_schedule(data);
+    showToast('저장했어요! ✓');
+}
+
+function cancel() {
+    window.pywebview.api.close_settings();
+}
+
+let personalDay = "1";
+
+function renderPersonalDayChips() {
+    const row = document.getElementById('personalDaysRow');
+    row.innerHTML = '';
+    [1,2,3,4,5].forEach(d => {
+        const chip = document.createElement('div');
+        chip.className = 'day-chip' + (String(d) === personalDay ? ' selected' : '');
+        chip.textContent = DAY_NAMES[d] + '요일';
+        chip.onclick = () => {
+            personalDay = String(d);
+            renderPersonalDayChips();
+            renderPersonalList();
+        };
+        row.appendChild(chip);
+    });
+}
+
+function getPersonalDaySchedule(dayStr) {
+    const d = parseInt(dayStr);
+    const shortDays = data.short_days || [3, 5];
+    return shortDays.includes(d) ? data.short : data.full;
+}
+
+function renderPersonalList() {
+    if (!data.personal) data.personal = {"1":[],"2":[],"3":[],"4":[],"5":[]};
+    if (!data.personal[personalDay]) data.personal[personalDay] = [];
+    const list = document.getElementById('list-personal');
+    const schedule = getPersonalDaySchedule(personalDay);
+
+    while (data.personal[personalDay].length < schedule.length)
+        data.personal[personalDay].push({name: "", room: ""});
+    if (data.personal[personalDay].length > schedule.length)
+        data.personal[personalDay] = data.personal[personalDay].slice(0, schedule.length);
+
+    list.innerHTML = '';
+    schedule.forEach((item, i) => {
+        const personal = data.personal[personalDay][i] || {name: "", room: ""};
+        const row = document.createElement('div');
+        row.className = 'period-row personal-row';
+        row.innerHTML = `
+            <span class="period-label">${item.name}</span>
+            <input type="text" value="${personal.name || ''}" placeholder="수업명"
+                oninput="data.personal['${personalDay}'][${i}].name=this.value">
+            <input type="text" class="time-input" value="${personal.room || ''}" placeholder="1반"
+                oninput="data.personal['${personalDay}'][${i}].room=this.value">
+        `;
+        list.appendChild(row);
+    });
+}
+
+function initDragDrop() {
+    setupDragDrop('list-full',
+        () => data.full,
+        () => renderList('full'));
+    setupDragDrop('list-short',
+        () => data.short,
+        () => renderList('short'));
+    setupDragDrop('list-rest',
+        () => data.rest_schedules[restDay],
+        renderRestSchedule);
+}
+
+window.addEventListener('pywebviewready', async () => { await init(); initDragDrop(); });
+</script>
+</body>
+</html>
