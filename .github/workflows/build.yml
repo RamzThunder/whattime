@@ -53,7 +53,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pyinstaller pywebview bottle
+          pip install pyinstaller pywebview bottle pillow
 
       - name: Build .exe with PyInstaller
         run: |
