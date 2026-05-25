@@ -1,0 +1,46 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'          # v1.9.2, v2.0.0 등 태그 push 시 릴리즈 생성
+  workflow_dispatch:  # 수동 실행도 가능
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install pyinstaller pywebview bottle
+
+      - name: Build .app with PyInstaller
+        run: |
+          pyinstaller whattime_app_mac.spec
+
+      - name: Zip the .app
+        run: |
+          cd dist
+          zip -r WhatTime.zip whattime_app_mac.app
+
+      - name: Upload artifact (for workflow_dispatch)
+        uses: actions/upload-artifact@v4
+        with:
+          name: WhatTime-mac
+          path: dist/WhatTime.zip
+
+      - name: Create GitHub Release (tag push only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/WhatTime.zip
+          generate_release_notes: true
