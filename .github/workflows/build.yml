@@ -86,6 +86,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          repository: RamzThunder/whattime-releases
+          token: ${{ secrets.releases_pat }}
           files: |
             WhatTime-mac.dmg
             WhatTime.exe

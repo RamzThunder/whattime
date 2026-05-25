@@ -637,6 +637,17 @@ h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; }
         <div style="font-size:0.75rem;color:#bbb;margin-top:8px;">기본값 지정 후 초기화하면 지정한 설정으로 되돌아가요</div>
     </div>
 
+    <!-- 업데이트 -->
+    <div class="startup-section" style="margin-top:12px;">
+        <div>
+            <div class="startup-label">🔄 앱 업데이트</div>
+            <div class="startup-desc" id="update-desc">버전 확인 중...</div>
+        </div>
+        <button class="btn btn-save" id="update-btn"
+            style="font-size:0.82rem;padding:6px 14px;min-width:80px;opacity:0.4;cursor:default;"
+            onclick="doInstallUpdate()" disabled>확인 중</button>
+    </div>
+
 </div><!-- /main-panel-advanced -->
 
 <div class="footer">
@@ -860,6 +871,57 @@ async function resetData() {
     await window.pywebview.api.reset_data();
     await init();
     showToast('초기화했어요!');
+}
+
+let _updateUrl = null;
+
+async function checkUpdate() {
+    const desc = document.getElementById('update-desc');
+    const btn = document.getElementById('update-btn');
+    try {
+        const result = await window.pywebview.api.check_update();
+        if (result.has_update) {
+            desc.textContent = `새 버전 v${result.version} 사용 가능 (현재: v${result.current})`;
+            btn.textContent = '업데이트';
+            btn.disabled = false;
+            btn.style.opacity = '1';
+            btn.style.cursor = 'pointer';
+            _updateUrl = result.url;
+        } else {
+            const ver = result.version || result.current;
+            desc.textContent = result.version ? `최신 버전이에요 (v${ver})` : `현재 버전: v${result.current}`;
+            btn.textContent = '최신 버전';
+            btn.disabled = true;
+            btn.style.opacity = '0.4';
+            btn.style.cursor = 'default';
+        }
+    } catch (e) {
+        desc.textContent = '업데이트 확인 실패';
+        btn.textContent = '재시도';
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.style.cursor = 'pointer';
+        btn.onclick = () => { btn.textContent = '확인 중'; btn.disabled = true; checkUpdate(); };
+    }
+}
+
+async function doInstallUpdate() {
+    if (!_updateUrl) return;
+    const btn = document.getElementById('update-btn');
+    const desc = document.getElementById('update-desc');
+    btn.textContent = '다운로드 중...';
+    btn.disabled = true;
+    btn.style.opacity = '0.4';
+    btn.style.cursor = 'default';
+    desc.textContent = '업데이트를 다운로드하고 있어요. 잠시 후 앱이 재시작됩니다...';
+    const ok = await window.pywebview.api.install_update(_updateUrl);
+    if (!ok) {
+        btn.textContent = '업데이트';
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.style.cursor = 'pointer';
+        desc.textContent = '업데이트 실패. 다시 시도해주세요.';
+    }
 }
 
 function setupDragDrop(listId, getItems, rerender) {
@@ -1279,7 +1341,7 @@ function initDragDrop() {
         renderRestSchedule);
 }
 
-window.addEventListener('pywebviewready', async () => { await init(); initDragDrop(); });
+window.addEventListener('pywebviewready', async () => { await init(); initDragDrop(); checkUpdate(); });
 </script>
 </body>
 </html>

@@ -7,6 +7,7 @@ import threading
 
 IS_MAC = sys.platform == 'darwin'
 APP_VERSION = '1.9.1'
+UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
 # 플랫폼별 import
@@ -117,6 +118,21 @@ DEFAULT_SCHEDULE = {
     "bell_alert_color": "#ff3b30",
     "custom_colors_bell_alert": []
 }
+
+def _version_tuple(v):
+    try:
+        return tuple(int(x) for x in v.split('.'))
+    except Exception:
+        return (0,)
+
+def _fetch_latest_release():
+    import urllib.request, json
+    try:
+        req = urllib.request.Request(UPDATE_API_URL, headers={'User-Agent': 'WhatTime/' + APP_VERSION})
+        with urllib.request.urlopen(req, timeout=8) as r:
+            return json.loads(r.read())
+    except Exception:
+        return None
 
 def load_schedule():
     if os.path.exists(SCHEDULE_PATH):
@@ -499,6 +515,61 @@ class Api:
             main_window.evaluate_js('reloadSchedule()')
         threading.Timer(0.05, _do).start()
         return True
+
+    def check_update(self):
+        data = _fetch_latest_release()
+        if not data:
+            return {'has_update': False, 'current': APP_VERSION}
+        latest = data.get('tag_name', '').lstrip('v')
+        if not latest:
+            return {'has_update': False, 'current': APP_VERSION}
+        if _version_tuple(latest) <= _version_tuple(APP_VERSION):
+            return {'has_update': False, 'version': latest, 'current': APP_VERSION}
+        asset_name = 'WhatTime-mac.dmg' if IS_MAC else 'WhatTime.exe'
+        url = next((a['browser_download_url'] for a in data.get('assets', []) if a['name'] == asset_name), None)
+        if not url:
+            return {'has_update': False, 'version': latest, 'current': APP_VERSION}
+        return {'has_update': True, 'version': latest, 'url': url, 'current': APP_VERSION}
+
+    def install_update(self, url):
+        import tempfile, urllib.request, shutil, subprocess
+        try:
+            tmp = tempfile.mkdtemp()
+            if IS_MAC:
+                dmg_path = os.path.join(tmp, 'WhatTime-mac.dmg')
+                with urllib.request.urlopen(url) as resp, open(dmg_path, 'wb') as f:
+                    shutil.copyfileobj(resp, f)
+                mount_point = os.path.join(tmp, 'mnt')
+                os.makedirs(mount_point, exist_ok=True)
+                subprocess.run(['hdiutil', 'attach', dmg_path, '-mountpoint', mount_point, '-nobrowse', '-quiet'], check=True)
+                new_app_tmp = os.path.join(tmp, 'whattime_app_mac.app')
+                subprocess.run(['cp', '-R', os.path.join(mount_point, 'whattime_app_mac.app'), new_app_tmp], check=True)
+                subprocess.run(['hdiutil', 'detach', mount_point, '-quiet'])
+                if not getattr(sys, 'frozen', False):
+                    return False
+                app_path = os.path.normpath(os.path.join(os.path.dirname(sys.executable), '..', '..', '..'))
+                script = f"#!/bin/bash\nsleep 2\nrm -rf '{app_path}'\ncp -R '{new_app_tmp}' '{app_path}'\nopen '{app_path}'\n"
+                script_path = os.path.join(tmp, 'update.sh')
+                with open(script_path, 'w') as f:
+                    f.write(script)
+                os.chmod(script_path, 0o755)
+                subprocess.Popen(['/bin/bash', script_path])
+            else:
+                exe_path = os.path.join(tmp, 'WhatTime_new.exe')
+                with urllib.request.urlopen(url) as resp, open(exe_path, 'wb') as f:
+                    shutil.copyfileobj(resp, f)
+                if not getattr(sys, 'frozen', False):
+                    return False
+                current_exe = sys.executable
+                bat = f'@echo off\nping 127.0.0.1 -n 3 >nul\ncopy /y "{exe_path}" "{current_exe}"\nstart "" "{current_exe}"\ndel "%~f0"\n'
+                bat_path = os.path.join(tmp, 'update.bat')
+                with open(bat_path, 'w') as f:
+                    f.write(bat)
+                subprocess.Popen(['cmd', '/c', bat_path], creationflags=0x08000000)
+            threading.Timer(0.3, lambda: os._exit(0)).start()
+            return True
+        except Exception:
+            return False
 
     def close_settings(self):
         if self.settings_window:
