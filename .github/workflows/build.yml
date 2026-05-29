@@ -23,7 +23,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pyinstaller pywebview bottle
+          pip install pyinstaller pywebview bottle pillow
 
       - name: Build .app with PyInstaller
         run: |
@@ -32,18 +32,20 @@ jobs:
       - name: Create DMG
         run: |
           brew install create-dmg
+          python3 make_dmg_bg.py
           mkdir -p /tmp/dmg_staging
           cp -R dist/WhatTime.app /tmp/dmg_staging/
           cp install.command /tmp/dmg_staging/
           chmod +x /tmp/dmg_staging/install.command
           create-dmg \
             --volname "WhatTime" \
+            --background "dmg_background.png" \
             --window-pos 200 100 \
             --window-size 560 300 \
             --icon-size 128 \
             --icon "WhatTime.app" 140 150 \
             --app-drop-link 420 150 \
-            --icon "install.command" 280 240 \
+            --icon "install.command" 280 260 \
             dist/WhatTime-mac.dmg \
             /tmp/dmg_staging
 

@@ -6,7 +6,7 @@ import copy
 import threading
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '1.9.2'
+APP_VERSION = '1.9.3'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -548,7 +548,7 @@ class Api:
                 if not getattr(sys, 'frozen', False):
                     return False
                 app_path = os.path.normpath(os.path.join(os.path.dirname(sys.executable), '..', '..', '..'))
-                script = f"#!/bin/bash\nsleep 2\nrm -rf '{app_path}'\ncp -R '{new_app_tmp}' '{app_path}'\nopen '{app_path}'\n"
+                script = f"#!/bin/bash\nsleep 2\nrm -rf '{app_path}'\ncp -R '{new_app_tmp}' '{app_path}'\nxattr -dr com.apple.quarantine '{app_path}' 2>/dev/null || true\nopen '{app_path}'\n"
                 script_path = os.path.join(tmp, 'update.sh')
                 with open(script_path, 'w') as f:
                     f.write(script)
