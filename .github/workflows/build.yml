@@ -31,10 +31,21 @@ jobs:
 
       - name: Create DMG
         run: |
+          brew install create-dmg
           mkdir -p /tmp/dmg_staging
           cp -R dist/WhatTime.app /tmp/dmg_staging/
-          ln -s /Applications /tmp/dmg_staging/Applications
-          hdiutil create -volname "WhatTime" -srcfolder /tmp/dmg_staging -ov -format UDZO dist/WhatTime-mac.dmg
+          cp install.command /tmp/dmg_staging/
+          chmod +x /tmp/dmg_staging/install.command
+          create-dmg \
+            --volname "WhatTime" \
+            --window-pos 200 100 \
+            --window-size 560 300 \
+            --icon-size 128 \
+            --icon "WhatTime.app" 140 150 \
+            --app-drop-link 420 150 \
+            --icon "install.command" 280 240 \
+            dist/WhatTime-mac.dmg \
+            /tmp/dmg_staging
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
