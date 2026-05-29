@@ -193,6 +193,66 @@ body.mini .mini-timer { display: block; }
 .resize-handle.top-right    { top: 0; right: 0; width: 10px; height: 10px; cursor: ne-resize; }
 .resize-handle.bottom-left  { bottom: 0; left: 0; width: 10px; height: 10px; cursor: sw-resize; }
 .resize-handle.bottom-right { bottom: 0; right: 0; width: 10px; height: 10px; cursor: se-resize; }
+.update-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+    box-sizing: border-box;
+    background: rgba(0,0,0,0.22);
+    -webkit-app-region: no-drag;
+}
+.update-modal.show { display: flex; }
+.update-panel {
+    width: min(280px, 100%);
+    border-radius: 8px;
+    background: var(--widget-bg);
+    color: var(--card-fg);
+    box-shadow: 0 10px 34px rgba(0,0,0,0.22);
+    padding: 18px;
+    box-sizing: border-box;
+    text-align: left;
+}
+.update-title {
+    font-size: 1rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+.update-desc {
+    font-size: 0.82rem;
+    line-height: 1.45;
+    color: var(--card-fg-dim);
+    margin-bottom: 14px;
+}
+.update-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+.update-action {
+    border: 0;
+    border-radius: 7px;
+    padding: 8px 12px;
+    font: inherit;
+    font-size: 0.82rem;
+    cursor: pointer;
+}
+.update-action.secondary {
+    background: var(--inactive-bg);
+    color: var(--inactive-text);
+}
+.update-action.primary {
+    background: var(--active-bg);
+    color: var(--active-text);
+    font-weight: 700;
+}
+.update-action:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
 </style>
 </head>
 <body>
@@ -226,6 +286,16 @@ body.mini .mini-timer { display: block; }
             onchange="saveOpacity(this.value)">
     </div>
 </div>
+<div class="update-modal" id="updateModal">
+    <div class="update-panel">
+        <div class="update-title">새 업데이트가 있어요</div>
+        <div class="update-desc" id="updateModalDesc"></div>
+        <div class="update-actions">
+            <button class="update-action secondary" id="updateLaterBtn" onclick="hideUpdateModal()">나중에</button>
+            <button class="update-action primary" id="updateNowBtn" onclick="installStartupUpdate()">업데이트</button>
+        </div>
+    </div>
+</div>
 
 <script>
 const weekNames = ["일요일","월요일","화요일","수요일","목요일","금요일","토요일"];
@@ -234,6 +304,7 @@ let isMiniMode = false;
 let isPinned = false;
 let previewOffset = null;
 let _fastRenderUntil = 0;
+let _startupUpdateUrl = null;
 
 function formatCountdown(leftMs, prefix, alwaysMs = false) {
     if (alwaysMs && leftMs > 0) {
@@ -740,6 +811,7 @@ async function init() {
     }
     applyTheme();
     scheduleRender();
+    checkStartupUpdate();
 }
 
 function scheduleRender() {
@@ -752,6 +824,41 @@ function startResize(e, direction) {
     e.stopPropagation();
     if (window.pywebview && window.pywebview.api && window.pywebview.api.start_resize) {
         window.pywebview.api.start_resize(direction);
+    }
+}
+
+async function checkStartupUpdate() {
+    try {
+        const result = await window.pywebview.api.check_update();
+        if (!result || !result.has_update) return;
+        _startupUpdateUrl = result.url;
+        document.getElementById('updateModalDesc').textContent =
+            `v${result.version} 버전을 설치할 수 있어요. 현재 버전은 v${result.current}입니다.`;
+        document.getElementById('updateModal').classList.add('show');
+    } catch (e) {
+        // 업데이트 실패는 사용 흐름을 막지 않는다.
+    }
+}
+
+function hideUpdateModal() {
+    document.getElementById('updateModal').classList.remove('show');
+}
+
+async function installStartupUpdate() {
+    if (!_startupUpdateUrl) return;
+    const btn = document.getElementById('updateNowBtn');
+    const later = document.getElementById('updateLaterBtn');
+    const desc = document.getElementById('updateModalDesc');
+    btn.textContent = '다운로드 중';
+    btn.disabled = true;
+    later.disabled = true;
+    desc.textContent = '업데이트를 다운로드하고 있어요. 잠시 후 앱이 재시작됩니다.';
+    const ok = await window.pywebview.api.install_update(_startupUpdateUrl);
+    if (!ok) {
+        btn.textContent = '다시 시도';
+        btn.disabled = false;
+        later.disabled = false;
+        desc.textContent = '업데이트를 설치하지 못했어요. 잠시 후 다시 시도해주세요.';
     }
 }
 

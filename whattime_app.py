@@ -6,7 +6,7 @@ import copy
 import threading
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '1.9.3'
+APP_VERSION = '1.9.4'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -131,8 +131,8 @@ def _fetch_latest_release():
         req = urllib.request.Request(UPDATE_API_URL, headers={'User-Agent': 'WhatTime/' + APP_VERSION})
         with urllib.request.urlopen(req, timeout=8) as r:
             return json.loads(r.read())
-    except Exception:
-        return None
+    except Exception as e:
+        return {'_error': str(e)}
 
 def load_schedule():
     if os.path.exists(SCHEDULE_PATH):
@@ -518,17 +518,17 @@ class Api:
 
     def check_update(self):
         data = _fetch_latest_release()
-        if not data:
-            return {'has_update': False, 'current': APP_VERSION}
+        if not data or data.get('_error'):
+            return {'has_update': False, 'current': APP_VERSION, 'error': data.get('_error') if data else 'no response'}
         latest = data.get('tag_name', '').lstrip('v')
         if not latest:
-            return {'has_update': False, 'current': APP_VERSION}
+            return {'has_update': False, 'current': APP_VERSION, 'error': 'release tag not found'}
         if _version_tuple(latest) <= _version_tuple(APP_VERSION):
             return {'has_update': False, 'version': latest, 'current': APP_VERSION}
         asset_name = 'WhatTime-mac.dmg' if IS_MAC else 'WhatTime.exe'
         url = next((a['browser_download_url'] for a in data.get('assets', []) if a['name'] == asset_name), None)
         if not url:
-            return {'has_update': False, 'version': latest, 'current': APP_VERSION}
+            return {'has_update': False, 'version': latest, 'current': APP_VERSION, 'error': asset_name + ' not found'}
         return {'has_update': True, 'version': latest, 'url': url, 'current': APP_VERSION}
 
     def install_update(self, url):
@@ -547,7 +547,7 @@ class Api:
                 subprocess.run(['hdiutil', 'detach', mount_point, '-quiet'])
                 if not getattr(sys, 'frozen', False):
                     return False
-                app_path = os.path.normpath(os.path.join(os.path.dirname(sys.executable), '..', '..', '..'))
+                app_path = os.path.normpath(os.path.join(os.path.dirname(sys.executable), '..', '..'))
                 script = f"#!/bin/bash\nsleep 2\nrm -rf '{app_path}'\ncp -R '{new_app_tmp}' '{app_path}'\nxattr -dr com.apple.quarantine '{app_path}' 2>/dev/null || true\nopen '{app_path}'\n"
                 script_path = os.path.join(tmp, 'update.sh')
                 with open(script_path, 'w') as f:

@@ -886,14 +886,23 @@ async function checkUpdate() {
             btn.disabled = false;
             btn.style.opacity = '1';
             btn.style.cursor = 'pointer';
+            btn.onclick = doInstallUpdate;
             _updateUrl = result.url;
         } else {
             const ver = result.version || result.current;
-            desc.textContent = result.version ? `최신 버전이에요 (v${ver})` : `현재 버전: v${result.current}`;
-            btn.textContent = '최신 버전';
-            btn.disabled = true;
-            btn.style.opacity = '0.4';
-            btn.style.cursor = 'default';
+            desc.textContent = result.error
+                ? `업데이트 확인 불가: ${result.error}`
+                : (result.version ? `최신 버전이에요 (v${ver})` : `현재 버전: v${result.current}`);
+            btn.textContent = result.error ? '재시도' : '최신 버전';
+            btn.disabled = !result.error;
+            btn.style.opacity = result.error ? '1' : '0.4';
+            btn.style.cursor = result.error ? 'pointer' : 'default';
+            _updateUrl = null;
+            if (result.error) {
+                btn.onclick = () => { btn.textContent = '확인 중'; btn.disabled = true; checkUpdate(); };
+            } else {
+                btn.onclick = doInstallUpdate;
+            }
         }
     } catch (e) {
         desc.textContent = '업데이트 확인 실패';
