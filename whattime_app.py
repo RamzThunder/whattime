@@ -6,7 +6,7 @@ import copy
 import threading
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '1.9.5'
+APP_VERSION = '1.9.6'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -125,11 +125,23 @@ def _version_tuple(v):
     except Exception:
         return (0,)
 
+def _ssl_context():
+    import ssl
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        return ssl.create_default_context()
+
+def _urlopen(req_or_url, timeout=None):
+    import urllib.request
+    return urllib.request.urlopen(req_or_url, timeout=timeout, context=_ssl_context())
+
 def _fetch_latest_release():
     import urllib.request, json
     try:
         req = urllib.request.Request(UPDATE_API_URL, headers={'User-Agent': 'WhatTime/' + APP_VERSION})
-        with urllib.request.urlopen(req, timeout=8) as r:
+        with _urlopen(req, timeout=8) as r:
             return json.loads(r.read())
     except Exception as e:
         return {'_error': str(e)}
@@ -537,7 +549,7 @@ class Api:
             tmp = tempfile.mkdtemp()
             if IS_MAC:
                 dmg_path = os.path.join(tmp, 'WhatTime-mac.dmg')
-                with urllib.request.urlopen(url) as resp, open(dmg_path, 'wb') as f:
+                with _urlopen(url) as resp, open(dmg_path, 'wb') as f:
                     shutil.copyfileobj(resp, f)
                 mount_point = os.path.join(tmp, 'mnt')
                 os.makedirs(mount_point, exist_ok=True)
@@ -556,7 +568,7 @@ class Api:
                 subprocess.Popen(['/bin/bash', script_path])
             else:
                 exe_path = os.path.join(tmp, 'WhatTime_new.exe')
-                with urllib.request.urlopen(url) as resp, open(exe_path, 'wb') as f:
+                with _urlopen(url) as resp, open(exe_path, 'wb') as f:
                     shutil.copyfileobj(resp, f)
                 if not getattr(sys, 'frozen', False):
                     return False

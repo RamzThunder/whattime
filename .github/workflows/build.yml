@@ -23,7 +23,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pyinstaller pywebview bottle pillow
+          pip install pyinstaller pywebview bottle pillow certifi
 
       - name: Build .app with PyInstaller
         run: |
@@ -69,7 +69,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pyinstaller pywebview bottle pillow
+          pip install pyinstaller pywebview bottle pillow certifi
 
       - name: Build .exe with PyInstaller
         run: |
