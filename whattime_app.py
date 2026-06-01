@@ -6,7 +6,7 @@ import copy
 import threading
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '1.9.12'
+APP_VERSION = '1.9.13'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -597,24 +597,56 @@ class Api:
                     return False
                 current_exe = sys.executable
                 app_dir = os.path.dirname(current_exe)
-                bat = (
-                    '@echo off\n'
-                    'setlocal\n'
-                    'set "PYINSTALLER_RESET_ENVIRONMENT=1"\n'
-                    'timeout /t 2 /nobreak >nul\n'
-                    f'for /l %%i in (1,1,30) do (copy /y "{exe_path}" "{current_exe}" >nul 2>&1 && goto copied\n'
-                    'timeout /t 1 /nobreak >nul)\n'
-                    'exit /b 1\n'
-                    ':copied\n'
-                    f'start "" /D "{app_dir}" "{current_exe}"\n'
-                    'del "%~f0"\n'
+                log_path = os.path.join(tempfile.gettempdir(), 'whattime_update.log')
+
+                def ps_quote(value):
+                    return "'" + value.replace("'", "''") + "'"
+
+                ps1 = (
+                    "$ErrorActionPreference = 'Continue'\n"
+                    "$env:PYINSTALLER_RESET_ENVIRONMENT = '1'\n"
+                    f"$src = {ps_quote(exe_path)}\n"
+                    f"$dst = {ps_quote(current_exe)}\n"
+                    f"$appDir = {ps_quote(app_dir)}\n"
+                    f"$log = {ps_quote(log_path)}\n"
+                    "function Write-UpdateLog($message) {\n"
+                    "  $line = ('{0} {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $message)\n"
+                    "  Add-Content -LiteralPath $log -Value $line -Encoding UTF8\n"
+                    "}\n"
+                    "Write-UpdateLog 'update helper started'\n"
+                    "Start-Sleep -Seconds 2\n"
+                    "$copied = $false\n"
+                    "for ($i = 1; $i -le 30; $i++) {\n"
+                    "  try {\n"
+                    "    Copy-Item -LiteralPath $src -Destination $dst -Force -ErrorAction Stop\n"
+                    "    Write-UpdateLog ('copy succeeded on attempt {0}' -f $i)\n"
+                    "    $copied = $true\n"
+                    "    break\n"
+                    "  } catch {\n"
+                    "    Write-UpdateLog ('copy failed on attempt {0}: {1}' -f $i, $_.Exception.Message)\n"
+                    "    Start-Sleep -Seconds 1\n"
+                    "  }\n"
+                    "}\n"
+                    "try {\n"
+                    "  Write-UpdateLog ('starting app; copied={0}' -f $copied)\n"
+                    "  Start-Process -FilePath $dst -WorkingDirectory $appDir\n"
+                    "} catch {\n"
+                    "  Write-UpdateLog ('restart failed: {0}' -f $_.Exception.Message)\n"
+                    "}\n"
+                    "Start-Sleep -Seconds 1\n"
+                    "Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue\n"
                 )
-                bat_path = os.path.join(tmp, 'update.bat')
-                with open(bat_path, 'w') as f:
-                    f.write(bat)
+                ps1_path = os.path.join(tmp, 'update.ps1')
+                with open(ps1_path, 'w', encoding='utf-8') as f:
+                    f.write(ps1)
                 env = os.environ.copy()
                 env['PYINSTALLER_RESET_ENVIRONMENT'] = '1'
-                subprocess.Popen(['cmd', '/c', bat_path], creationflags=0x08000000, cwd=app_dir, env=env)
+                subprocess.Popen(
+                    ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', ps1_path],
+                    creationflags=0x08000000 | 0x00000200,
+                    cwd=app_dir,
+                    env=env,
+                )
             threading.Timer(0.3, lambda: os._exit(0)).start()
             return True
         except Exception:
