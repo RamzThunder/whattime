@@ -6,7 +6,7 @@ import copy
 import threading
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '1.9.19'
+APP_VERSION = '1.9.20'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -194,6 +194,9 @@ class Api:
     def __init__(self):
         self.settings_window = None
         self._pinned = False
+        self._font_cache = None
+        self._font_loading = False
+        self._settings_opening = False
 
     def toggle_on_top(self, is_pinned):
         self._pinned = is_pinned
@@ -210,6 +213,8 @@ class Api:
         threading.Timer(0, _do).start()
 
     def open_settings(self):
+        if self._settings_opening:
+            return
         if self.settings_window is not None:
             if self.settings_window in webview.windows:
                 try:
@@ -220,14 +225,18 @@ class Api:
             else:
                 self.settings_window = None
 
-        self.settings_window = webview.create_window(
-            title='설정',
-            url=SETTINGS_HTML,
-            width=480,
-            height=720,
-            resizable=True,
-            js_api=self,
-        )
+        self._settings_opening = True
+        try:
+            self.settings_window = webview.create_window(
+                title='설정',
+                url=SETTINGS_HTML,
+                width=480,
+                height=720,
+                resizable=True,
+                js_api=self,
+            )
+        finally:
+            self._settings_opening = False
 
         def on_closed():
             self.settings_window = None
@@ -287,7 +296,7 @@ class Api:
                 return False
             return True
 
-    def get_system_fonts(self):
+    def _load_system_fonts(self):
         if IS_MAC:
             try:
                 from AppKit import NSFontManager
@@ -347,6 +356,31 @@ class Api:
                 return sorted(families)
             except:
                 return []
+
+    def get_system_fonts(self):
+        if self._font_cache is not None:
+            return self._font_cache
+        if self._font_loading:
+            return []
+
+        self._font_loading = True
+        import queue
+        result_queue = queue.Queue(maxsize=1)
+
+        def load():
+            try:
+                fonts = self._load_system_fonts()
+            except Exception:
+                fonts = []
+            self._font_cache = fonts
+            self._font_loading = False
+            result_queue.put(fonts)
+
+        threading.Thread(target=load, daemon=True).start()
+        try:
+            return result_queue.get(timeout=3)
+        except queue.Empty:
+            return []
 
     def get_schedule(self):
         return load_schedule()
@@ -562,13 +596,20 @@ class Api:
         return True
 
     def check_update(self):
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as exe:
-            future = exe.submit(_fetch_latest_release)
+        import queue
+        result_queue = queue.Queue(maxsize=1)
+
+        def fetch():
             try:
-                data = future.result(timeout=10)
+                result_queue.put(_fetch_latest_release())
             except Exception as e:
-                return {'has_update': False, 'current': APP_VERSION, 'error': str(e)}
+                result_queue.put({'_error': str(e)})
+
+        threading.Thread(target=fetch, daemon=True).start()
+        try:
+            data = result_queue.get(timeout=10)
+        except queue.Empty:
+            return {'has_update': False, 'current': APP_VERSION, 'error': 'update check timed out'}
         if not data or data.get('_error'):
             return {'has_update': False, 'current': APP_VERSION, 'error': data.get('_error') if data else 'no response'}
         latest = data.get('tag_name', '').lstrip('v')

@@ -799,10 +799,19 @@ function onPickerHexInput(key, val) {
 }
 
 let allFonts = [];
+let fontLoadAttempts = 0;
 
 function populateFontSelect(fonts, currentFont) {
     const sel = document.getElementById('fontSelect');
     sel.innerHTML = '<option value="">시스템 기본</option>';
+    if (currentFont && !fonts.includes(currentFont)) {
+        const opt = document.createElement('option');
+        opt.value = currentFont;
+        opt.textContent = currentFont;
+        opt.style.fontFamily = `"${currentFont}", sans-serif`;
+        opt.selected = true;
+        sel.appendChild(opt);
+    }
     fonts.forEach(f => {
         const opt = document.createElement('option');
         opt.value = f;
@@ -812,6 +821,32 @@ function populateFontSelect(fonts, currentFont) {
         sel.appendChild(opt);
     });
     if (!currentFont) sel.value = '';
+}
+
+async function loadFontSelect() {
+    const currentFont = data.font_family || '';
+    populateFontSelect(allFonts, currentFont);
+    if (allFonts.length) return;
+
+    fontLoadAttempts += 1;
+    try {
+        const fonts = await window.pywebview.api.get_system_fonts();
+        allFonts = Array.isArray(fonts) ? fonts : [];
+    } catch (e) {
+        allFonts = [];
+    }
+
+    if (!allFonts.length && fontLoadAttempts < 5) {
+        setTimeout(loadFontSelect, 1000);
+        return;
+    }
+
+    const search = document.getElementById('fontSearch');
+    if (search && search.value.trim()) {
+        filterFonts(search.value);
+    } else {
+        populateFontSelect(allFonts, data.font_family || currentFont);
+    }
 }
 
 function filterFonts(query) {
@@ -1056,10 +1091,7 @@ async function init() {
     document.getElementById('fontSizeDisplay').textContent = Math.round(scale * 100) + '%';
     document.getElementById('fontBoldCheck').checked = !!data.font_bold;
 
-    if (!allFonts.length) {
-        allFonts = await window.pywebview.api.get_system_fonts();
-    }
-    populateFontSelect(allFonts, data.font_family || '');
+    loadFontSelect();
 
     document.getElementById('showMsToggle').checked = data.show_ms !== false;
 
