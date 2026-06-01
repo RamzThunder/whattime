@@ -6,7 +6,7 @@ import copy
 import threading
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '1.9.11'
+APP_VERSION = '1.9.12'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -211,7 +211,7 @@ class Api:
                 self.settings_window = None
 
         self.settings_window = webview.create_window(
-            title='시정 설정',
+            title='설정',
             url=SETTINGS_HTML,
             width=480,
             height=720,

@@ -300,7 +300,7 @@ h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; }
 </head>
 <body>
 
-<h2>시정 설정</h2>
+<h2>설정</h2>
 <p class="subtitle">교시 이름과 시작/종료 시간을 자유롭게 편집할 수 있어요.</p>
 
 <!-- 메인 탭 -->
@@ -515,6 +515,54 @@ h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; }
 <!-- ── 고급 패널 ── -->
 <div id="main-panel-advanced" class="main-panel">
 
+    <!-- 업데이트 -->
+    <div class="startup-section" id="updateSection" style="margin-top:12px;">
+        <div>
+            <div class="startup-label">🔄 앱 업데이트</div>
+            <div class="startup-desc" id="update-desc">버전 확인 중...</div>
+        </div>
+        <button class="btn btn-save" id="update-btn"
+            style="font-size:0.82rem;padding:6px 14px;min-width:80px;opacity:0.4;cursor:default;"
+            onclick="doInstallUpdate()" disabled>확인 중</button>
+    </div>
+
+    <!-- 데이터 관리 -->
+    <div class="data-section">
+        <div class="data-section-title">💾 데이터 관리</div>
+        <div class="data-action-row" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <button class="data-btn" onclick="exportData()">📤 백업</button>
+            <button class="data-btn" onclick="importData()">📥 복원</button>
+            <button class="data-btn" onclick="setAsDefault()">⭐ 기본값 지정</button>
+            <button class="data-btn danger" onclick="resetData()">🔄 초기화</button>
+        </div>
+        <div style="font-size:0.75rem;color:#bbb;margin-top:8px;">기본값 지정 후 초기화하면 지정한 설정으로 되돌아가요</div>
+    </div>
+
+    <!-- 종 시간 보정 -->
+    <div class="offset-section">
+        <div>
+            <div class="startup-label">⏱ 종 시간 보정</div>
+            <div class="startup-desc">학교 종과의 오차를 초 단위로 조정해요 (저장 시 적용)</div>
+        </div>
+        <div class="offset-control">
+            <button class="offset-btn" onclick="adjustOffset(-1)">−</button>
+            <span class="offset-value" id="offsetDisplay">0초</span>
+            <button class="offset-btn" onclick="adjustOffset(1)">+</button>
+        </div>
+    </div>
+
+    <!-- 밀리초 표시 -->
+    <div class="startup-section">
+        <div>
+            <div class="startup-label">⏱ 밀리초 표시</div>
+            <div class="startup-desc">정시퇴근 카운트다운 등에서 소수점 이하를 표시해요</div>
+        </div>
+        <div class="toggle-wrap">
+            <input type="checkbox" class="toggle-input" id="showMsToggle" onchange="onShowMsChange(this.checked)">
+            <label class="toggle-label" for="showMsToggle"></label>
+        </div>
+    </div>
+
     <!-- 컬러 카운트다운 -->
     <div class="theme-section">
         <div class="theme-section-title">🎨 컬러 카운트다운</div>
@@ -576,19 +624,6 @@ h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; }
         </div>
     </div>
 
-    <!-- 종 시간 보정 -->
-    <div class="offset-section">
-        <div>
-            <div class="startup-label">⏱ 종 시간 보정</div>
-            <div class="startup-desc">학교 종과의 오차를 초 단위로 조정해요 (저장 시 적용)</div>
-        </div>
-        <div class="offset-control">
-            <button class="offset-btn" onclick="adjustOffset(-1)">−</button>
-            <span class="offset-value" id="offsetDisplay">0초</span>
-            <button class="offset-btn" onclick="adjustOffset(1)">+</button>
-        </div>
-    </div>
-
     <!-- 시간 미리보기 -->
     <div class="preview-section">
         <div>
@@ -611,41 +646,6 @@ h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; }
             <button class="preview-apply" onclick="applyPreview()">미리보기</button>
             <button class="preview-clear" id="clearPreviewBtn" onclick="clearPreview()" style="display:none">해제</button>
         </div>
-    </div>
-
-    <!-- 밀리초 표시 -->
-    <div class="startup-section">
-        <div>
-            <div class="startup-label">⏱ 밀리초 표시</div>
-            <div class="startup-desc">정시퇴근 카운트다운 등에서 소수점 이하를 표시해요</div>
-        </div>
-        <div class="toggle-wrap">
-            <input type="checkbox" class="toggle-input" id="showMsToggle" onchange="onShowMsChange(this.checked)">
-            <label class="toggle-label" for="showMsToggle"></label>
-        </div>
-    </div>
-
-    <!-- 데이터 관리 -->
-    <div class="data-section">
-        <div class="data-section-title">💾 데이터 관리</div>
-        <div class="data-action-row" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-            <button class="data-btn" onclick="exportData()">📤 백업</button>
-            <button class="data-btn" onclick="importData()">📥 복원</button>
-            <button class="data-btn" onclick="setAsDefault()">⭐ 기본값 지정</button>
-            <button class="data-btn danger" onclick="resetData()">🔄 초기화</button>
-        </div>
-        <div style="font-size:0.75rem;color:#bbb;margin-top:8px;">기본값 지정 후 초기화하면 지정한 설정으로 되돌아가요</div>
-    </div>
-
-    <!-- 업데이트 -->
-    <div class="startup-section" id="updateSection" style="margin-top:12px;">
-        <div>
-            <div class="startup-label">🔄 앱 업데이트</div>
-            <div class="startup-desc" id="update-desc">버전 확인 중...</div>
-        </div>
-        <button class="btn btn-save" id="update-btn"
-            style="font-size:0.82rem;padding:6px 14px;min-width:80px;opacity:0.4;cursor:default;"
-            onclick="doInstallUpdate()" disabled>확인 중</button>
     </div>
 
 </div><!-- /main-panel-advanced -->
