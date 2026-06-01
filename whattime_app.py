@@ -6,7 +6,7 @@ import copy
 import threading
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '1.9.20'
+APP_VERSION = '1.9.21'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -173,6 +173,26 @@ def _fetch_latest_release():
             return json.loads(r.read())
     except Exception as e:
         return {'_error': str(e)}
+
+def _build_update_result(data):
+    if not data or data.get('_error'):
+        return {'has_update': False, 'current': APP_VERSION, 'error': data.get('_error') if data else 'no response'}
+    latest = data.get('tag_name', '').lstrip('v')
+    if not latest:
+        return {'has_update': False, 'current': APP_VERSION, 'error': 'release tag not found'}
+    if _version_tuple(latest) <= _version_tuple(APP_VERSION):
+        return {'has_update': False, 'version': latest, 'current': APP_VERSION}
+    asset_name = 'WhatTime-mac.dmg' if IS_MAC else 'whattime.exe'
+    url = next((a['browser_download_url'] for a in data.get('assets', []) if a['name'] == asset_name), None)
+    if not url:
+        return {'has_update': False, 'version': latest, 'current': APP_VERSION, 'error': asset_name + ' not found'}
+    return {'has_update': True, 'version': latest, 'url': url, 'current': APP_VERSION}
+
+def _check_update_result():
+    try:
+        return _build_update_result(_fetch_latest_release())
+    except Exception as e:
+        return {'has_update': False, 'current': APP_VERSION, 'error': str(e)}
 
 def load_schedule():
     if os.path.exists(SCHEDULE_PATH):
@@ -596,32 +616,26 @@ class Api:
         return True
 
     def check_update(self):
-        import queue
-        result_queue = queue.Queue(maxsize=1)
+        return _check_update_result()
 
-        def fetch():
-            try:
-                result_queue.put(_fetch_latest_release())
-            except Exception as e:
-                result_queue.put({'_error': str(e)})
+    def check_update_async(self, target='main'):
+        def run():
+            result = _check_update_result()
+            payload = json.dumps(result, ensure_ascii=False)
 
-        threading.Thread(target=fetch, daemon=True).start()
-        try:
-            data = result_queue.get(timeout=10)
-        except queue.Empty:
-            return {'has_update': False, 'current': APP_VERSION, 'error': 'update check timed out'}
-        if not data or data.get('_error'):
-            return {'has_update': False, 'current': APP_VERSION, 'error': data.get('_error') if data else 'no response'}
-        latest = data.get('tag_name', '').lstrip('v')
-        if not latest:
-            return {'has_update': False, 'current': APP_VERSION, 'error': 'release tag not found'}
-        if _version_tuple(latest) <= _version_tuple(APP_VERSION):
-            return {'has_update': False, 'version': latest, 'current': APP_VERSION}
-        asset_name = 'WhatTime-mac.dmg' if IS_MAC else 'whattime.exe'
-        url = next((a['browser_download_url'] for a in data.get('assets', []) if a['name'] == asset_name), None)
-        if not url:
-            return {'has_update': False, 'version': latest, 'current': APP_VERSION, 'error': asset_name + ' not found'}
-        return {'has_update': True, 'version': latest, 'url': url, 'current': APP_VERSION}
+            def notify():
+                try:
+                    if target == 'settings' and self.settings_window in webview.windows:
+                        self.settings_window.evaluate_js(f'window.onUpdateCheckResult({payload})')
+                    elif main_window in webview.windows:
+                        main_window.evaluate_js(f'window.onStartupUpdateCheckResult({payload})')
+                except Exception:
+                    pass
+
+            threading.Timer(0, notify).start()
+
+        threading.Thread(target=run, daemon=True).start()
+        return {'started': True, 'current': APP_VERSION}
 
     def install_update(self, url):
         import tempfile, urllib.request, shutil, subprocess

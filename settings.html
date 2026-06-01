@@ -910,44 +910,51 @@ async function resetData() {
 
 let _updateUrl = null;
 
-async function checkUpdate() {
+function checkUpdate() {
     const desc = document.getElementById('update-desc');
     const btn = document.getElementById('update-btn');
     try {
-        const result = await window.pywebview.api.check_update();
-        if (result.has_update) {
-            desc.textContent = `새 버전 v${result.version} 사용 가능 (현재: v${result.current})`;
-            btn.textContent = '업데이트';
-            btn.disabled = false;
-            btn.style.opacity = '1';
-            btn.style.cursor = 'pointer';
-            btn.onclick = doInstallUpdate;
-            _updateUrl = result.url;
-        } else {
-            const ver = result.version || result.current;
-            desc.textContent = result.error
-                ? `업데이트 확인 불가: ${result.error}`
-                : (result.version ? `최신 버전이에요 (v${ver})` : `현재 버전: v${result.current}`);
-            btn.textContent = result.error ? '재시도' : '최신 버전';
-            btn.disabled = !result.error;
-            btn.style.opacity = result.error ? '1' : '0.4';
-            btn.style.cursor = result.error ? 'pointer' : 'default';
-            _updateUrl = null;
-            if (result.error) {
-                btn.onclick = () => { btn.textContent = '확인 중'; btn.disabled = true; checkUpdate(); };
-            } else {
-                btn.onclick = doInstallUpdate;
-            }
-        }
+        desc.textContent = '버전 확인 중...';
+        btn.textContent = '확인 중';
+        btn.disabled = true;
+        btn.style.opacity = '0.4';
+        btn.style.cursor = 'default';
+        window.pywebview.api.check_update_async('settings');
     } catch (e) {
-        desc.textContent = '업데이트 확인 실패';
-        btn.textContent = '재시도';
+        onUpdateCheckResult({ error: '업데이트 확인 실패', current: '' });
+    }
+}
+
+function onUpdateCheckResult(result) {
+    const desc = document.getElementById('update-desc');
+    const btn = document.getElementById('update-btn');
+    if (result && result.has_update) {
+        desc.textContent = `새 버전 v${result.version} 사용 가능 (현재: v${result.current})`;
+        btn.textContent = '업데이트';
         btn.disabled = false;
         btn.style.opacity = '1';
         btn.style.cursor = 'pointer';
-        btn.onclick = () => { btn.textContent = '확인 중'; btn.disabled = true; checkUpdate(); };
+        btn.onclick = doInstallUpdate;
+        _updateUrl = result.url;
+    } else {
+        const ver = result && (result.version || result.current);
+        desc.textContent = result && result.error
+            ? `업데이트 확인 불가: ${result.error}`
+            : (result && result.version ? `최신 버전이에요 (v${ver})` : `현재 버전: v${result ? result.current : ''}`);
+        btn.textContent = result && result.error ? '재시도' : '최신 버전';
+        btn.disabled = !(result && result.error);
+        btn.style.opacity = result && result.error ? '1' : '0.4';
+        btn.style.cursor = result && result.error ? 'pointer' : 'default';
+        _updateUrl = null;
+        if (result && result.error) {
+            btn.onclick = () => { btn.textContent = '확인 중'; btn.disabled = true; checkUpdate(); };
+        } else {
+            btn.onclick = doInstallUpdate;
+        }
     }
 }
+
+window.onUpdateCheckResult = onUpdateCheckResult;
 
 async function doInstallUpdate() {
     if (!_updateUrl) return;

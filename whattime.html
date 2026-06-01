@@ -831,18 +831,23 @@ function startResize(e, direction) {
     }
 }
 
-async function checkStartupUpdate() {
+function checkStartupUpdate() {
     try {
-        const result = await window.pywebview.api.check_update();
-        if (!result || !result.has_update) return;
-        _startupUpdateUrl = result.url;
-        document.getElementById('updateModalDesc').textContent =
-            `v${result.version} 버전을 설치할 수 있어요. 현재 버전은 v${result.current}입니다.`;
-        document.getElementById('updateModal').classList.add('show');
+        window.pywebview.api.check_update_async('main');
     } catch (e) {
         // 업데이트 실패는 사용 흐름을 막지 않는다.
     }
 }
+
+function onStartupUpdateCheckResult(result) {
+    if (!result || !result.has_update) return;
+    _startupUpdateUrl = result.url;
+    document.getElementById('updateModalDesc').textContent =
+        `v${result.version} 버전을 설치할 수 있어요. 현재 버전은 v${result.current}입니다.`;
+    document.getElementById('updateModal').classList.add('show');
+}
+
+window.onStartupUpdateCheckResult = onStartupUpdateCheckResult;
 
 function hideUpdateModal() {
     document.getElementById('updateModal').classList.remove('show');
