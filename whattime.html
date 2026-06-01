@@ -815,7 +815,7 @@ async function init() {
         setTimeout(() => window.pywebview.api.refresh_transparency(), 50);
         setTimeout(() => window.pywebview.api.refresh_transparency(), 400);
     }
-    if (navigator.platform.startsWith('Mac')) checkStartupUpdate();
+    checkStartupUpdate();
 }
 
 function scheduleRender() {

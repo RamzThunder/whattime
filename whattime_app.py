@@ -6,7 +6,7 @@ import copy
 import threading
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '1.9.8'
+APP_VERSION = '1.9.9'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -552,8 +552,6 @@ class Api:
         return True
 
     def check_update(self):
-        if not IS_MAC:
-            return {'has_update': False, 'current': APP_VERSION}
         data = _fetch_latest_release()
         if not data or data.get('_error'):
             return {'has_update': False, 'current': APP_VERSION, 'error': data.get('_error') if data else 'no response'}
@@ -562,7 +560,7 @@ class Api:
             return {'has_update': False, 'current': APP_VERSION, 'error': 'release tag not found'}
         if _version_tuple(latest) <= _version_tuple(APP_VERSION):
             return {'has_update': False, 'version': latest, 'current': APP_VERSION}
-        asset_name = 'WhatTime-mac.dmg' if IS_MAC else 'WhatTime.exe'
+        asset_name = 'WhatTime-mac.dmg' if IS_MAC else 'whattime.exe'
         url = next((a['browser_download_url'] for a in data.get('assets', []) if a['name'] == asset_name), None)
         if not url:
             return {'has_update': False, 'version': latest, 'current': APP_VERSION, 'error': asset_name + ' not found'}
@@ -570,28 +568,39 @@ class Api:
 
     def install_update(self, url):
         import tempfile, urllib.request, shutil, subprocess
-        if not IS_MAC:
-            return False
         try:
             tmp = tempfile.mkdtemp()
-            dmg_path = os.path.join(tmp, 'WhatTime-mac.dmg')
-            with _urlopen(url) as resp, open(dmg_path, 'wb') as f:
-                shutil.copyfileobj(resp, f)
-            mount_point = os.path.join(tmp, 'mnt')
-            os.makedirs(mount_point, exist_ok=True)
-            subprocess.run(['hdiutil', 'attach', dmg_path, '-mountpoint', mount_point, '-nobrowse', '-quiet'], check=True)
-            new_app_tmp = os.path.join(tmp, '지금 몇교시야.app')
-            subprocess.run(['cp', '-R', os.path.join(mount_point, '지금 몇교시야.app'), new_app_tmp], check=True)
-            subprocess.run(['hdiutil', 'detach', mount_point, '-quiet'])
-            if not getattr(sys, 'frozen', False):
-                return False
-            app_path = os.path.normpath(os.path.join(os.path.dirname(sys.executable), '..', '..'))
-            script = f"#!/bin/bash\nsleep 2\nrm -rf '{app_path}'\ncp -R '{new_app_tmp}' '{app_path}'\nxattr -dr com.apple.quarantine '{app_path}' 2>/dev/null || true\nopen '{app_path}'\n"
-            script_path = os.path.join(tmp, 'update.sh')
-            with open(script_path, 'w') as f:
-                f.write(script)
-            os.chmod(script_path, 0o755)
-            subprocess.Popen(['/bin/bash', script_path])
+            if IS_MAC:
+                dmg_path = os.path.join(tmp, 'WhatTime-mac.dmg')
+                with _urlopen(url) as resp, open(dmg_path, 'wb') as f:
+                    shutil.copyfileobj(resp, f)
+                mount_point = os.path.join(tmp, 'mnt')
+                os.makedirs(mount_point, exist_ok=True)
+                subprocess.run(['hdiutil', 'attach', dmg_path, '-mountpoint', mount_point, '-nobrowse', '-quiet'], check=True)
+                new_app_tmp = os.path.join(tmp, '지금 몇교시야.app')
+                subprocess.run(['cp', '-R', os.path.join(mount_point, '지금 몇교시야.app'), new_app_tmp], check=True)
+                subprocess.run(['hdiutil', 'detach', mount_point, '-quiet'])
+                if not getattr(sys, 'frozen', False):
+                    return False
+                app_path = os.path.normpath(os.path.join(os.path.dirname(sys.executable), '..', '..'))
+                script = f"#!/bin/bash\nsleep 2\nrm -rf '{app_path}'\ncp -R '{new_app_tmp}' '{app_path}'\nxattr -dr com.apple.quarantine '{app_path}' 2>/dev/null || true\nopen '{app_path}'\n"
+                script_path = os.path.join(tmp, 'update.sh')
+                with open(script_path, 'w') as f:
+                    f.write(script)
+                os.chmod(script_path, 0o755)
+                subprocess.Popen(['/bin/bash', script_path])
+            else:
+                exe_path = os.path.join(tmp, 'whattime_new.exe')
+                with _urlopen(url) as resp, open(exe_path, 'wb') as f:
+                    shutil.copyfileobj(resp, f)
+                if not getattr(sys, 'frozen', False):
+                    return False
+                current_exe = sys.executable
+                bat = f'@echo off\nping 127.0.0.1 -n 3 >nul\ncopy /y "{exe_path}" "{current_exe}"\nstart "" "{current_exe}"\ndel "%~f0"\n'
+                bat_path = os.path.join(tmp, 'update.bat')
+                with open(bat_path, 'w') as f:
+                    f.write(bat)
+                subprocess.Popen(['cmd', '/c', bat_path], creationflags=0x08000000)
             threading.Timer(0.3, lambda: os._exit(0)).start()
             return True
         except Exception:

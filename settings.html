@@ -1353,12 +1353,7 @@ function initDragDrop() {
 window.addEventListener('pywebviewready', async () => {
     await init();
     initDragDrop();
-    if (navigator.platform.startsWith('Mac')) {
-        checkUpdate();
-    } else {
-        const section = document.getElementById('updateSection');
-        if (section) section.style.display = 'none';
-    }
+    checkUpdate();
 });
 </script>
 </body>
