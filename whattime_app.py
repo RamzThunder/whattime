@@ -59,9 +59,10 @@ if not IS_MAC:
 
     def _ensure_single_instance():
         global _single_instance_mutex
-        windll.kernel32.CreateMutexW.restype = wintypes.HANDLE
-        _single_instance_mutex = windll.kernel32.CreateMutexW(None, False, SINGLE_INSTANCE_MUTEX)
-        return windll.kernel32.GetLastError() != ERROR_ALREADY_EXISTS
+        _k32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        _k32.CreateMutexW.restype = wintypes.HANDLE
+        _single_instance_mutex = _k32.CreateMutexW(None, False, SINGLE_INSTANCE_MUTEX)
+        return ctypes.get_last_error() != ERROR_ALREADY_EXISTS
 
     def _get_hwnd():
         try:
