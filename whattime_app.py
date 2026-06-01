@@ -6,7 +6,7 @@ import copy
 import threading
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '1.9.10'
+APP_VERSION = '1.9.11'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -596,11 +596,25 @@ class Api:
                 if not getattr(sys, 'frozen', False):
                     return False
                 current_exe = sys.executable
-                bat = f'@echo off\nping 127.0.0.1 -n 3 >nul\ncopy /y "{exe_path}" "{current_exe}"\nstart "" "{current_exe}"\ndel "%~f0"\n'
+                app_dir = os.path.dirname(current_exe)
+                bat = (
+                    '@echo off\n'
+                    'setlocal\n'
+                    'set "PYINSTALLER_RESET_ENVIRONMENT=1"\n'
+                    'timeout /t 2 /nobreak >nul\n'
+                    f'for /l %%i in (1,1,30) do (copy /y "{exe_path}" "{current_exe}" >nul 2>&1 && goto copied\n'
+                    'timeout /t 1 /nobreak >nul)\n'
+                    'exit /b 1\n'
+                    ':copied\n'
+                    f'start "" /D "{app_dir}" "{current_exe}"\n'
+                    'del "%~f0"\n'
+                )
                 bat_path = os.path.join(tmp, 'update.bat')
                 with open(bat_path, 'w') as f:
                     f.write(bat)
-                subprocess.Popen(['cmd', '/c', bat_path], creationflags=0x08000000)
+                env = os.environ.copy()
+                env['PYINSTALLER_RESET_ENVIRONMENT'] = '1'
+                subprocess.Popen(['cmd', '/c', bat_path], creationflags=0x08000000, cwd=app_dir, env=env)
             threading.Timer(0.3, lambda: os._exit(0)).start()
             return True
         except Exception:
