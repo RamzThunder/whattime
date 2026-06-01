@@ -58,7 +58,11 @@ coll = COLLECT(
 )
 app = BUNDLE(
     coll,
-    name='WhatTime.app',
-    icon='calendar.icns',
+    name='지금 몇교시야.app',
+    icon='icon.icns',
     bundle_identifier='com.whattime.app',
+    info_plist={
+        'CFBundleDisplayName': '지금 몇교시야',
+        'CFBundleName': '지금 몇교시야',
+    },
 )

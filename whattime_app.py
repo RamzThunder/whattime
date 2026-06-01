@@ -6,7 +6,7 @@ import copy
 import threading
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '1.9.7'
+APP_VERSION = '1.9.8'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -48,7 +48,7 @@ SETTINGS_HTML      = os.path.join(base_dir, 'settings.html')
 if not IS_MAC:
     STARTUP_REG_KEY  = r'Software\Microsoft\Windows\CurrentVersion\Run'
     STARTUP_APP_NAME = 'WhatTime'
-    WIN_TITLE        = '지금 몇교시야?'
+    WIN_TITLE        = '지금 몇교시야'
 
     class _MARGINS(ctypes.Structure):
         _fields_ = [('left', ctypes.c_int), ('right', ctypes.c_int),
@@ -56,13 +56,31 @@ if not IS_MAC:
 
     def _get_hwnd():
         try:
-            return main_window.native.Handle.ToInt32()
+            return main_window.native.Handle.ToInt64()
         except Exception:
             return windll.user32.FindWindowW(None, WIN_TITLE)
 
     def _fix_transparency(hwnd):
         m = _MARGINS(-1, -1, -1, -1)
         windll.dwmapi.DwmExtendFrameIntoClientArea(hwnd, ctypes.byref(m))
+
+    def _apply_windows_transparency():
+        hwnd = _get_hwnd()
+        if not hwnd:
+            return
+        try:
+            _fix_transparency(hwnd)
+        except Exception:
+            pass
+        try:
+            from System.Drawing import Color
+            native = main_window.native
+            native.BackColor = Color.Black
+            webview_control = getattr(native, 'webview', None)
+            if webview_control is not None and hasattr(webview_control, 'DefaultBackgroundColor'):
+                webview_control.DefaultBackgroundColor = Color.Transparent
+        except Exception:
+            pass
 
 # ─────────────────────────────────────────
 # 기본 시정 데이터
@@ -465,6 +483,11 @@ class Api:
         threading.Timer(0, _do).start()
         return True
 
+    def refresh_transparency(self):
+        if not IS_MAC:
+            _apply_windows_transparency()
+        return True
+
     def export_data(self):
         if not self.settings_window:
             return False
@@ -529,6 +552,8 @@ class Api:
         return True
 
     def check_update(self):
+        if not IS_MAC:
+            return {'has_update': False, 'current': APP_VERSION}
         data = _fetch_latest_release()
         if not data or data.get('_error'):
             return {'has_update': False, 'current': APP_VERSION, 'error': data.get('_error') if data else 'no response'}
@@ -545,39 +570,28 @@ class Api:
 
     def install_update(self, url):
         import tempfile, urllib.request, shutil, subprocess
+        if not IS_MAC:
+            return False
         try:
             tmp = tempfile.mkdtemp()
-            if IS_MAC:
-                dmg_path = os.path.join(tmp, 'WhatTime-mac.dmg')
-                with _urlopen(url) as resp, open(dmg_path, 'wb') as f:
-                    shutil.copyfileobj(resp, f)
-                mount_point = os.path.join(tmp, 'mnt')
-                os.makedirs(mount_point, exist_ok=True)
-                subprocess.run(['hdiutil', 'attach', dmg_path, '-mountpoint', mount_point, '-nobrowse', '-quiet'], check=True)
-                new_app_tmp = os.path.join(tmp, 'WhatTime.app')
-                subprocess.run(['cp', '-R', os.path.join(mount_point, 'WhatTime.app'), new_app_tmp], check=True)
-                subprocess.run(['hdiutil', 'detach', mount_point, '-quiet'])
-                if not getattr(sys, 'frozen', False):
-                    return False
-                app_path = os.path.normpath(os.path.join(os.path.dirname(sys.executable), '..', '..'))
-                script = f"#!/bin/bash\nsleep 2\nrm -rf '{app_path}'\ncp -R '{new_app_tmp}' '{app_path}'\nxattr -dr com.apple.quarantine '{app_path}' 2>/dev/null || true\nopen '{app_path}'\n"
-                script_path = os.path.join(tmp, 'update.sh')
-                with open(script_path, 'w') as f:
-                    f.write(script)
-                os.chmod(script_path, 0o755)
-                subprocess.Popen(['/bin/bash', script_path])
-            else:
-                exe_path = os.path.join(tmp, 'WhatTime_new.exe')
-                with _urlopen(url) as resp, open(exe_path, 'wb') as f:
-                    shutil.copyfileobj(resp, f)
-                if not getattr(sys, 'frozen', False):
-                    return False
-                current_exe = sys.executable
-                bat = f'@echo off\nping 127.0.0.1 -n 3 >nul\ncopy /y "{exe_path}" "{current_exe}"\nstart "" "{current_exe}"\ndel "%~f0"\n'
-                bat_path = os.path.join(tmp, 'update.bat')
-                with open(bat_path, 'w') as f:
-                    f.write(bat)
-                subprocess.Popen(['cmd', '/c', bat_path], creationflags=0x08000000)
+            dmg_path = os.path.join(tmp, 'WhatTime-mac.dmg')
+            with _urlopen(url) as resp, open(dmg_path, 'wb') as f:
+                shutil.copyfileobj(resp, f)
+            mount_point = os.path.join(tmp, 'mnt')
+            os.makedirs(mount_point, exist_ok=True)
+            subprocess.run(['hdiutil', 'attach', dmg_path, '-mountpoint', mount_point, '-nobrowse', '-quiet'], check=True)
+            new_app_tmp = os.path.join(tmp, '지금 몇교시야.app')
+            subprocess.run(['cp', '-R', os.path.join(mount_point, '지금 몇교시야.app'), new_app_tmp], check=True)
+            subprocess.run(['hdiutil', 'detach', mount_point, '-quiet'])
+            if not getattr(sys, 'frozen', False):
+                return False
+            app_path = os.path.normpath(os.path.join(os.path.dirname(sys.executable), '..', '..'))
+            script = f"#!/bin/bash\nsleep 2\nrm -rf '{app_path}'\ncp -R '{new_app_tmp}' '{app_path}'\nxattr -dr com.apple.quarantine '{app_path}' 2>/dev/null || true\nopen '{app_path}'\n"
+            script_path = os.path.join(tmp, 'update.sh')
+            with open(script_path, 'w') as f:
+                f.write(script)
+            os.chmod(script_path, 0o755)
+            subprocess.Popen(['/bin/bash', script_path])
             threading.Timer(0.3, lambda: os._exit(0)).start()
             return True
         except Exception:
@@ -594,13 +608,14 @@ class Api:
 api = Api()
 
 main_window = webview.create_window(
-    title='지금 몇교시야?',
+    title='지금 몇교시야',
     url=MAIN_HTML,
     width=340,
     height=700,
     resizable=True,
     frameless=True,
     transparent=True,
+    background_color='#000000',
     on_top=False,
     x=30,
     y=30,
@@ -626,12 +641,15 @@ if not IS_MAC:
         threading.Thread(target=watch, daemon=True).start()
 
     def on_window_shown():
-        import time
-        time.sleep(0.15)
-        hwnd = _get_hwnd()
-        if hwnd:
-            _fix_transparency(hwnd)
-            _start_restore_watcher(hwnd)
+        def apply_later():
+            import time
+            for delay in (0.05, 0.2, 0.6, 1.2):
+                time.sleep(delay)
+                _apply_windows_transparency()
+            hwnd = _get_hwnd()
+            if hwnd:
+                _start_restore_watcher(hwnd)
+        threading.Thread(target=apply_later, daemon=True).start()
 
     main_window.events.shown += on_window_shown
 

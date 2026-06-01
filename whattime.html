@@ -811,7 +811,11 @@ async function init() {
     }
     applyTheme();
     scheduleRender();
-    checkStartupUpdate();
+    if (!navigator.platform.startsWith('Mac') && window.pywebview?.api?.refresh_transparency) {
+        setTimeout(() => window.pywebview.api.refresh_transparency(), 50);
+        setTimeout(() => window.pywebview.api.refresh_transparency(), 400);
+    }
+    if (navigator.platform.startsWith('Mac')) checkStartupUpdate();
 }
 
 function scheduleRender() {

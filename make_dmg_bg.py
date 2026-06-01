@@ -4,7 +4,7 @@ W, H = 560, 300
 img = Image.new('RGBA', (W, H), (255, 255, 255, 0))
 draw = ImageDraw.Draw(img)
 
-# Arrow between WhatTime.app (center x=140) and Applications (center x=420)
+# Arrow between the app icon (center x=140) and Applications (center x=420)
 # Icon radius 64px → gap: 204 to 356
 ax1, ax2, ay = 218, 342, 148
 body_end = ax2 - 16

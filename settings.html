@@ -638,7 +638,7 @@ h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; }
     </div>
 
     <!-- 업데이트 -->
-    <div class="startup-section" style="margin-top:12px;">
+    <div class="startup-section" id="updateSection" style="margin-top:12px;">
         <div>
             <div class="startup-label">🔄 앱 업데이트</div>
             <div class="startup-desc" id="update-desc">버전 확인 중...</div>
@@ -1350,7 +1350,16 @@ function initDragDrop() {
         renderRestSchedule);
 }
 
-window.addEventListener('pywebviewready', async () => { await init(); initDragDrop(); checkUpdate(); });
+window.addEventListener('pywebviewready', async () => {
+    await init();
+    initDragDrop();
+    if (navigator.platform.startsWith('Mac')) {
+        checkUpdate();
+    } else {
+        const section = document.getElementById('updateSection');
+        if (section) section.style.display = 'none';
+    }
+});
 </script>
 </body>
 </html>

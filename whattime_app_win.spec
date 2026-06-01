@@ -1,24 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-from PyInstaller.utils.hooks import collect_data_files
-
 
 a = Analysis(
     ['whattime_app.py'],
     pathex=[],
     binaries=[],
-    datas=[('whattime.html', '.'), ('settings.html', '.'), ('calendar.png', '.')] + collect_data_files('certifi'),
-    hiddenimports=[
-        'webview',
-        'webview.platforms.edgechromium',
-        'webview.js',
-        'certifi',
-        'bottle',
-        'proxy_tools',
-        'clr',
-        'System',
-        'System.Windows.Forms',
-    ],
+    datas=[('whattime.html', '.'), ('settings.html', '.')],
+    hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -34,7 +22,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='WhatTime',
+    name='whattime',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -47,5 +35,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='calendar.png',
+    icon=['icon.ico'],
 )

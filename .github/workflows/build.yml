@@ -34,16 +34,16 @@ jobs:
           brew install create-dmg
           python3 make_dmg_bg.py
           mkdir -p /tmp/dmg_staging
-          cp -R dist/WhatTime.app /tmp/dmg_staging/
+          cp -R "dist/지금 몇교시야.app" /tmp/dmg_staging/
           cp install.command /tmp/dmg_staging/
           chmod +x /tmp/dmg_staging/install.command
           create-dmg \
-            --volname "WhatTime" \
+            --volname "지금 몇교시야" \
             --background "dmg_background.png" \
             --window-pos 200 100 \
             --window-size 560 300 \
             --icon-size 128 \
-            --icon "WhatTime.app" 140 150 \
+            --icon "지금 몇교시야.app" 140 150 \
             --app-drop-link 420 150 \
             --icon "install.command" 280 260 \
             dist/WhatTime-mac.dmg \
@@ -79,7 +79,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: WhatTime-win
-          path: dist/WhatTime.exe
+          path: dist/whattime.exe
 
   release:
     if: startsWith(github.ref, 'refs/tags/')
@@ -106,5 +106,5 @@ jobs:
           token: ${{ secrets.releases_pat }}
           files: |
             WhatTime-mac.dmg
-            WhatTime.exe
+            whattime.exe
           generate_release_notes: true
