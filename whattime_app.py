@@ -6,7 +6,7 @@ import copy
 import threading
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '1.9.14'
+APP_VERSION = '1.9.15'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -49,10 +49,19 @@ if not IS_MAC:
     STARTUP_REG_KEY  = r'Software\Microsoft\Windows\CurrentVersion\Run'
     STARTUP_APP_NAME = 'WhatTime'
     WIN_TITLE        = '지금 몇교시야'
+    SINGLE_INSTANCE_MUTEX = 'Local\\whattime-single-instance'
+    ERROR_ALREADY_EXISTS = 183
+    _single_instance_mutex = None
 
     class _MARGINS(ctypes.Structure):
         _fields_ = [('left', ctypes.c_int), ('right', ctypes.c_int),
                     ('top', ctypes.c_int),  ('bottom', ctypes.c_int)]
+
+    def _ensure_single_instance():
+        global _single_instance_mutex
+        windll.kernel32.CreateMutexW.restype = wintypes.HANDLE
+        _single_instance_mutex = windll.kernel32.CreateMutexW(None, False, SINGLE_INSTANCE_MUTEX)
+        return windll.kernel32.GetLastError() != ERROR_ALREADY_EXISTS
 
     def _get_hwnd():
         try:
@@ -627,8 +636,12 @@ class Api:
                     "    Start-Sleep -Seconds 1\n"
                     "  }\n"
                     "}\n"
+                    "if (-not $copied) {\n"
+                    "  Write-UpdateLog 'copy never succeeded; app restart skipped to avoid duplicate processes'\n"
+                    "  exit 1\n"
+                    "}\n"
                     "try {\n"
-                    "  Write-UpdateLog ('starting app; copied={0}' -f $copied)\n"
+                    "  Write-UpdateLog 'starting updated app'\n"
                     "  Start-Process -FilePath $dst -WorkingDirectory $appDir\n"
                     "} catch {\n"
                     "  Write-UpdateLog ('restart failed: {0}' -f $_.Exception.Message)\n"
@@ -659,6 +672,9 @@ class Api:
             except:
                 pass
             self.settings_window = None
+
+if not IS_MAC and not _ensure_single_instance():
+    sys.exit(0)
 
 api = Api()
 
