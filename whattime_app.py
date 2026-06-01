@@ -6,7 +6,7 @@ import copy
 import threading
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '1.9.18'
+APP_VERSION = '1.9.19'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -562,7 +562,13 @@ class Api:
         return True
 
     def check_update(self):
-        data = _fetch_latest_release()
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as exe:
+            future = exe.submit(_fetch_latest_release)
+            try:
+                data = future.result(timeout=10)
+            except Exception as e:
+                return {'has_update': False, 'current': APP_VERSION, 'error': str(e)}
         if not data or data.get('_error'):
             return {'has_update': False, 'current': APP_VERSION, 'error': data.get('_error') if data else 'no response'}
         latest = data.get('tag_name', '').lstrip('v')
