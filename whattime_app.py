@@ -6,7 +6,7 @@ import copy
 import threading
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '1.9.24'
+APP_VERSION = '1.9.25'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -740,7 +740,10 @@ class Api:
                     cwd=app_dir,
                     env=env,
                 )
-            threading.Timer(0.3, lambda: os._exit(0)).start()
+            if IS_MAC:
+                threading.Timer(0.3, lambda: os._exit(0)).start()
+            else:
+                threading.Timer(0, main_window.destroy).start()
             return True
         except Exception:
             return False
