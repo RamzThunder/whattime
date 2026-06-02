@@ -6,7 +6,7 @@ import copy
 import threading
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '1.9.21'
+APP_VERSION = '1.9.22'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -41,6 +41,15 @@ SCHEDULE_PATH      = os.path.join(data_dir, 'schedule.json')
 USER_DEFAULT_PATH  = os.path.join(data_dir, 'user_default.json')
 MAIN_HTML          = os.path.join(base_dir, 'whattime.html')
 SETTINGS_HTML      = os.path.join(base_dir, 'settings.html')
+
+WEBVIEW_STORAGE_PATH = None
+if not IS_MAC:
+    WEBVIEW_STORAGE_PATH = os.path.join(
+        os.environ.get('LOCALAPPDATA', data_dir),
+        'WhatTime',
+        'WebView2',
+    )
+    os.makedirs(WEBVIEW_STORAGE_PATH, exist_ok=True)
 
 # ─────────────────────────────────────────
 # Windows 전용 상수 및 투명도 유틸
@@ -703,6 +712,7 @@ class Api:
                     "  exit 1\n"
                     "}\n"
                     "try {\n"
+                    "  Start-Sleep -Milliseconds 800\n"
                     "  Write-UpdateLog 'starting updated app'\n"
                     "  Start-Process -FilePath $dst -WorkingDirectory $appDir\n"
                     "} catch {\n"
@@ -790,4 +800,4 @@ if __name__ == '__main__':
     if IS_MAC:
         webview.start()
     else:
-        webview.start(gui='edgechromium')
+        webview.start(gui='edgechromium', private_mode=False, storage_path=WEBVIEW_STORAGE_PATH)
