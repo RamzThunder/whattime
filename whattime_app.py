@@ -6,7 +6,7 @@ import copy
 import threading
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '1.9.22'
+APP_VERSION = '1.9.23'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -284,6 +284,23 @@ class Api:
             except OSError:
                 return False
 
+    def get_startup_enabled_async(self, target='settings'):
+        def run():
+            enabled = bool(self.get_startup_enabled())
+            payload = json.dumps(enabled)
+
+            def notify():
+                try:
+                    if target == 'settings' and self.settings_window in webview.windows:
+                        self.settings_window.evaluate_js(f'window.onStartupEnabledResult({payload})')
+                except Exception:
+                    pass
+
+            threading.Timer(0, notify).start()
+
+        threading.Thread(target=run, daemon=True).start()
+        return {'started': True}
+
     def set_startup(self, enabled):
         if IS_MAC:
             plist_path = os.path.expanduser('~/Library/LaunchAgents/com.whattime.app.plist')
@@ -386,15 +403,22 @@ class Api:
             except:
                 return []
 
-    def get_system_fonts(self):
+    def _start_font_load(self, target=None):
         if self._font_cache is not None:
-            return self._font_cache
+            if target == 'settings':
+                payload = json.dumps(self._font_cache, ensure_ascii=False)
+                def notify_cached():
+                    try:
+                        if self.settings_window in webview.windows:
+                            self.settings_window.evaluate_js(f'window.onSystemFontsResult({payload})')
+                    except Exception:
+                        pass
+                threading.Timer(0, notify_cached).start()
+            return
         if self._font_loading:
-            return []
+            return
 
         self._font_loading = True
-        import queue
-        result_queue = queue.Queue(maxsize=1)
 
         def load():
             try:
@@ -403,13 +427,27 @@ class Api:
                 fonts = []
             self._font_cache = fonts
             self._font_loading = False
-            result_queue.put(fonts)
+            if target == 'settings':
+                payload = json.dumps(fonts, ensure_ascii=False)
+                def notify():
+                    try:
+                        if self.settings_window in webview.windows:
+                            self.settings_window.evaluate_js(f'window.onSystemFontsResult({payload})')
+                    except Exception:
+                        pass
+                threading.Timer(0, notify).start()
 
         threading.Thread(target=load, daemon=True).start()
-        try:
-            return result_queue.get(timeout=3)
-        except queue.Empty:
-            return []
+
+    def get_system_fonts(self):
+        if self._font_cache is not None:
+            return self._font_cache
+        self._start_font_load()
+        return []
+
+    def get_system_fonts_async(self, target='settings'):
+        self._start_font_load(target)
+        return {'started': True}
 
     def get_schedule(self):
         return load_schedule()

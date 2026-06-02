@@ -296,9 +296,27 @@ h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; }
 .data-btn:hover { border-color: #555; color: #000; background: #f9f9f8; }
 .data-btn.danger { border-color: #ffcdd2; color: #c62828; }
 .data-btn.danger:hover { background: #fff0f0; border-color: #c62828; }
+body.settings-loading .main-tabs,
+body.settings-loading .main-panel,
+body.settings-loading .footer {
+    visibility: hidden;
+}
+body.settings-loading::before {
+    content: '설정 불러오는 중...';
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    right: 20px;
+    background: white;
+    border: 1.5px solid #eee;
+    border-radius: 10px;
+    padding: 14px 16px;
+    color: #555;
+    font-size: 0.9rem;
+}
 </style>
 </head>
-<body>
+<body class="settings-loading">
 
 <h2>설정</h2>
 <p class="subtitle">교시 이름과 시작/종료 시간을 자유롭게 편집할 수 있어요.</p>
@@ -823,31 +841,32 @@ function populateFontSelect(fonts, currentFont) {
     if (!currentFont) sel.value = '';
 }
 
-async function loadFontSelect() {
+function loadFontSelect() {
     const currentFont = data.font_family || '';
     populateFontSelect(allFonts, currentFont);
     if (allFonts.length) return;
 
     fontLoadAttempts += 1;
     try {
-        const fonts = await window.pywebview.api.get_system_fonts();
-        allFonts = Array.isArray(fonts) ? fonts : [];
+        window.pywebview.api.get_system_fonts_async('settings');
     } catch (e) {
-        allFonts = [];
+        if (fontLoadAttempts < 5) {
+            setTimeout(loadFontSelect, 1000);
+        }
     }
+}
 
-    if (!allFonts.length && fontLoadAttempts < 5) {
-        setTimeout(loadFontSelect, 1000);
-        return;
-    }
-
+function onSystemFontsResult(fonts) {
+    allFonts = Array.isArray(fonts) ? fonts : [];
     const search = document.getElementById('fontSearch');
     if (search && search.value.trim()) {
         filterFonts(search.value);
     } else {
-        populateFontSelect(allFonts, data.font_family || currentFont);
+        populateFontSelect(allFonts, data.font_family || '');
     }
 }
+
+window.onSystemFontsResult = onSystemFontsResult;
 
 function filterFonts(query) {
     const filtered = query.trim()
@@ -956,6 +975,14 @@ function onUpdateCheckResult(result) {
 
 window.onUpdateCheckResult = onUpdateCheckResult;
 
+function onStartupEnabledResult(enabled) {
+    const toggle = document.getElementById('startupToggle');
+    toggle.checked = !!enabled;
+    toggle.disabled = false;
+}
+
+window.onStartupEnabledResult = onStartupEnabledResult;
+
 async function doInstallUpdate() {
     if (!_updateUrl) return;
     const btn = document.getElementById('update-btn');
@@ -1040,6 +1067,12 @@ const ALL_DAYS_MON_FIRST = [1,2,3,4,5,6,0];
 let data = { full: [], short: [], short_days: [3, 5], rest_days: [0, 6], rest_schedules: {"0":[],"1":[],"2":[],"3":[],"4":[],"5":[],"6":[]} };
 let currentTab = 'full';
 let restDay = "0";
+let settingsReady = false;
+
+function markSettingsReady() {
+    settingsReady = true;
+    document.body.classList.remove('settings-loading');
+}
 
 async function init() {
     data = await window.pywebview.api.get_schedule();
@@ -1112,8 +1145,9 @@ async function init() {
     document.getElementById('topBarStyleDesc').textContent =
         isWinStyle ? 'Windows 스타일: ⚙️ ▣ ⊟  /  📌 − ✕' : 'Mac 스타일: ✕ − 📌  /  ▣ ⊟ ⚙️';
 
-    const enabled = await window.pywebview.api.get_startup_enabled();
-    document.getElementById('startupToggle').checked = enabled;
+    document.getElementById('startupToggle').disabled = true;
+    window.pywebview.api.get_startup_enabled_async('settings');
+    markSettingsReady();
 }
 
 function applyPreview() {
@@ -1390,9 +1424,14 @@ function initDragDrop() {
 }
 
 window.addEventListener('pywebviewready', async () => {
-    await init();
-    initDragDrop();
-    checkUpdate();
+    try {
+        await init();
+        initDragDrop();
+        checkUpdate();
+    } catch (e) {
+        markSettingsReady();
+        showToast('설정을 불러오지 못했어요');
+    }
 });
 </script>
 </body>
