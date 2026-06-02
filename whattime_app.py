@@ -6,7 +6,7 @@ import copy
 import threading
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '1.9.23'
+APP_VERSION = '1.9.24'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -226,6 +226,8 @@ class Api:
         self._font_cache = None
         self._font_loading = False
         self._settings_opening = False
+        self._startup_enabled_result = None
+        self._update_results = {}
 
     def toggle_on_top(self, is_pinned):
         self._pinned = is_pinned
@@ -285,21 +287,15 @@ class Api:
                 return False
 
     def get_startup_enabled_async(self, target='settings'):
+        self._startup_enabled_result = None
         def run():
-            enabled = bool(self.get_startup_enabled())
-            payload = json.dumps(enabled)
-
-            def notify():
-                try:
-                    if target == 'settings' and self.settings_window in webview.windows:
-                        self.settings_window.evaluate_js(f'window.onStartupEnabledResult({payload})')
-                except Exception:
-                    pass
-
-            threading.Timer(0, notify).start()
+            self._startup_enabled_result = bool(self.get_startup_enabled())
 
         threading.Thread(target=run, daemon=True).start()
         return {'started': True}
+
+    def get_startup_enabled_result(self):
+        return self._startup_enabled_result
 
     def set_startup(self, enabled):
         if IS_MAC:
@@ -403,17 +399,8 @@ class Api:
             except:
                 return []
 
-    def _start_font_load(self, target=None):
+    def _start_font_load(self):
         if self._font_cache is not None:
-            if target == 'settings':
-                payload = json.dumps(self._font_cache, ensure_ascii=False)
-                def notify_cached():
-                    try:
-                        if self.settings_window in webview.windows:
-                            self.settings_window.evaluate_js(f'window.onSystemFontsResult({payload})')
-                    except Exception:
-                        pass
-                threading.Timer(0, notify_cached).start()
             return
         if self._font_loading:
             return
@@ -427,15 +414,6 @@ class Api:
                 fonts = []
             self._font_cache = fonts
             self._font_loading = False
-            if target == 'settings':
-                payload = json.dumps(fonts, ensure_ascii=False)
-                def notify():
-                    try:
-                        if self.settings_window in webview.windows:
-                            self.settings_window.evaluate_js(f'window.onSystemFontsResult({payload})')
-                    except Exception:
-                        pass
-                threading.Timer(0, notify).start()
 
         threading.Thread(target=load, daemon=True).start()
 
@@ -446,7 +424,7 @@ class Api:
         return []
 
     def get_system_fonts_async(self, target='settings'):
-        self._start_font_load(target)
+        self._start_font_load()
         return {'started': True}
 
     def get_schedule(self):
@@ -666,23 +644,15 @@ class Api:
         return _check_update_result()
 
     def check_update_async(self, target='main'):
+        self._update_results[target] = None
         def run():
-            result = _check_update_result()
-            payload = json.dumps(result, ensure_ascii=False)
-
-            def notify():
-                try:
-                    if target == 'settings' and self.settings_window in webview.windows:
-                        self.settings_window.evaluate_js(f'window.onUpdateCheckResult({payload})')
-                    elif main_window in webview.windows:
-                        main_window.evaluate_js(f'window.onStartupUpdateCheckResult({payload})')
-                except Exception:
-                    pass
-
-            threading.Timer(0, notify).start()
+            self._update_results[target] = _check_update_result()
 
         threading.Thread(target=run, daemon=True).start()
         return {'started': True, 'current': APP_VERSION}
+
+    def get_update_result(self, target='main'):
+        return self._update_results.get(target)
 
     def install_update(self, url):
         import tempfile, urllib.request, shutil, subprocess

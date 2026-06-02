@@ -849,10 +849,25 @@ function loadFontSelect() {
     fontLoadAttempts += 1;
     try {
         window.pywebview.api.get_system_fonts_async('settings');
+        pollSystemFonts();
     } catch (e) {
         if (fontLoadAttempts < 5) {
             setTimeout(loadFontSelect, 1000);
         }
+    }
+}
+
+async function pollSystemFonts(attempt = 0) {
+    if (attempt > 20) return;
+    try {
+        const fonts = await window.pywebview.api.get_system_fonts();
+        if (!Array.isArray(fonts) || !fonts.length) {
+            setTimeout(() => pollSystemFonts(attempt + 1), 500);
+            return;
+        }
+        onSystemFontsResult(fonts);
+    } catch (e) {
+        setTimeout(() => pollSystemFonts(attempt + 1), 500);
     }
 }
 
@@ -865,8 +880,6 @@ function onSystemFontsResult(fonts) {
         populateFontSelect(allFonts, data.font_family || '');
     }
 }
-
-window.onSystemFontsResult = onSystemFontsResult;
 
 function filterFonts(query) {
     const filtered = query.trim()
@@ -939,6 +952,24 @@ function checkUpdate() {
         btn.style.opacity = '0.4';
         btn.style.cursor = 'default';
         window.pywebview.api.check_update_async('settings');
+        pollUpdateResult();
+    } catch (e) {
+        onUpdateCheckResult({ error: '업데이트 확인 실패', current: '' });
+    }
+}
+
+async function pollUpdateResult(attempt = 0) {
+    if (attempt > 60) {
+        onUpdateCheckResult({ error: '업데이트 확인 시간 초과', current: '' });
+        return;
+    }
+    try {
+        const result = await window.pywebview.api.get_update_result('settings');
+        if (!result) {
+            setTimeout(() => pollUpdateResult(attempt + 1), 500);
+            return;
+        }
+        onUpdateCheckResult(result);
     } catch (e) {
         onUpdateCheckResult({ error: '업데이트 확인 실패', current: '' });
     }
@@ -973,15 +1004,28 @@ function onUpdateCheckResult(result) {
     }
 }
 
-window.onUpdateCheckResult = onUpdateCheckResult;
+async function pollStartupEnabledResult(attempt = 0) {
+    if (attempt > 20) {
+        document.getElementById('startupToggle').disabled = false;
+        return;
+    }
+    try {
+        const enabled = await window.pywebview.api.get_startup_enabled_result();
+        if (enabled === null || typeof enabled === 'undefined') {
+            setTimeout(() => pollStartupEnabledResult(attempt + 1), 300);
+            return;
+        }
+        onStartupEnabledResult(enabled);
+    } catch (e) {
+        document.getElementById('startupToggle').disabled = false;
+    }
+}
 
 function onStartupEnabledResult(enabled) {
     const toggle = document.getElementById('startupToggle');
     toggle.checked = !!enabled;
     toggle.disabled = false;
 }
-
-window.onStartupEnabledResult = onStartupEnabledResult;
 
 async function doInstallUpdate() {
     if (!_updateUrl) return;
@@ -1147,6 +1191,7 @@ async function init() {
 
     document.getElementById('startupToggle').disabled = true;
     window.pywebview.api.get_startup_enabled_async('settings');
+    pollStartupEnabledResult();
     markSettingsReady();
 }
 
