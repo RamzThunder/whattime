@@ -177,6 +177,17 @@ h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; }
     -webkit-appearance: none;
     margin: 0;
 }
+.school-search-results {
+    display: none; flex-direction: column; gap: 5px;
+    margin: -2px 0 8px 108px;
+}
+.school-search-results.show { display: flex; }
+.school-search-result {
+    width: 100%; padding: 7px 9px; border-radius: 7px;
+    border: 1.5px solid #e0e0e0; background: white; color: #333;
+    cursor: pointer; text-align: left; font: inherit; font-size: 0.8rem;
+}
+.school-search-result:hover { border-color: #999; background: #f7f7f6; }
 
 .rest-toggle-row {
     display: flex; align-items: center; justify-content: space-between;
@@ -516,7 +527,10 @@ body.settings-loading::before {
             <div class="text-row">
                 <span class="text-row-label">학교 이름</span>
                 <input type="text" id="comciSchoolNameInput" placeholder="표시할 학교 이름">
+                <button class="hex-add-btn" id="comciSchoolSearchBtn"
+                    onclick="searchComciSchools()">검색</button>
             </div>
+            <div class="school-search-results" id="comciSchoolSearchResults"></div>
             <div class="text-row">
                 <span class="text-row-label">학교코드</span>
                 <input type="number" class="number-input" id="comciSchoolCodeInput" min="1" inputmode="numeric"
@@ -1546,6 +1560,60 @@ async function importComciSchedule() {
         button.disabled = false;
         button.textContent = '이번 주 불러오기';
     }
+}
+
+async function searchComciSchools() {
+    const input = document.getElementById('comciSchoolNameInput');
+    const button = document.getElementById('comciSchoolSearchBtn');
+    const resultsEl = document.getElementById('comciSchoolSearchResults');
+    const query = input.value.trim();
+    if (!query) {
+        showToast('검색할 학교 이름을 입력해 주세요');
+        input.focus();
+        return;
+    }
+
+    button.disabled = true;
+    button.textContent = '검색 중';
+    resultsEl.classList.remove('show');
+    resultsEl.innerHTML = '';
+    try {
+        const result = await window.pywebview.api.search_comci_schools(query);
+        if (!result.ok) throw new Error(result.error || '학교 검색에 실패했습니다.');
+        const schools = result.schools || [];
+        if (schools.length === 0) {
+            showToast('검색된 학교가 없어요');
+            return;
+        }
+        if (schools.length === 1) {
+            selectComciSchool(schools[0]);
+            return;
+        }
+        schools.forEach(school => {
+            const item = document.createElement('button');
+            item.className = 'school-search-result';
+            item.textContent = `${school.region} · ${school.school_name} · ${school.school_code}`;
+            item.onclick = () => selectComciSchool(school);
+            resultsEl.appendChild(item);
+        });
+        resultsEl.classList.add('show');
+    } catch (e) {
+        showToast(e.message || '학교 검색에 실패했어요');
+    } finally {
+        button.disabled = false;
+        button.textContent = '검색';
+    }
+}
+
+function selectComciSchool(school) {
+    document.getElementById('comciSchoolNameInput').value = school.school_name;
+    document.getElementById('comciSchoolCodeInput').value = school.school_code;
+    const resultsEl = document.getElementById('comciSchoolSearchResults');
+    resultsEl.classList.remove('show');
+    resultsEl.innerHTML = '';
+    document.getElementById('comciImportDesc').textContent =
+        `${school.region} · ${school.school_name} · 학교코드 ${school.school_code}`;
+    showToast('학교코드를 입력했어요');
 }
 
 function initDragDrop() {

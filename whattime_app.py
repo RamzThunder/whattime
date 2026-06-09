@@ -7,7 +7,7 @@ import threading
 import base64
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '2.1.2'
+APP_VERSION = '2.1.3'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -179,6 +179,7 @@ def _urlopen(req_or_url, timeout=None):
     return urllib.request.urlopen(req_or_url, timeout=timeout, context=_ssl_context())
 
 COMCI_API_URL = 'http://comci.net:4082/36179_T'
+COMCI_SEARCH_URL = 'http://comci.net:4082/36179'
 DEFAULT_COMCI_SCHOOL_CODE = 84946
 DEFAULT_COMCI_TEACHER_NUMBER = 7
 
@@ -197,6 +198,36 @@ def _decode_comci_json(raw):
         while index < len(text) and text[index] in '\x00 \t\r\n':
             index += 1
     return first
+
+def search_comci_schools(query):
+    import urllib.parse
+    import urllib.request
+    query = str(query or '').strip()
+    if not query:
+        raise ValueError('검색할 학교 이름을 입력해 주세요.')
+
+    encoded = urllib.parse.quote(query, encoding='euc-kr', safe='')
+    req = urllib.request.Request(
+        f'{COMCI_SEARCH_URL}?17384l{encoded}',
+        headers={
+            'User-Agent': 'WhatTime/' + APP_VERSION,
+            'Accept': 'application/json,text/plain,*/*',
+            'Referer': 'http://comci.net:4082/th',
+            'x-requested-with': 'XMLHttpRequest',
+        },
+    )
+    with _urlopen(req, timeout=10) as response:
+        data = _decode_comci_json(response.read())
+
+    results = []
+    for item in (data or {}).get('학교검색', []):
+        if len(item) >= 4 and item[1] != '알림' and item[3]:
+            results.append({
+                'region': str(item[1]),
+                'school_name': str(item[2]),
+                'school_code': int(item[3]),
+            })
+    return results
 
 def _fetch_comci_raw(school_code, date_index=1):
     import urllib.request
@@ -545,6 +576,12 @@ class Api:
             return {'ok': True, **fetch_comci_teacher_schedule(school_code, teacher_number)}
         except Exception as e:
             return {'ok': False, 'error': str(e)}
+
+    def search_comci_schools(self, query):
+        try:
+            return {'ok': True, 'schools': search_comci_schools(query)}
+        except Exception as e:
+            return {'ok': False, 'error': str(e), 'schools': []}
 
     def set_preview_offset(self, offset_seconds):
         def _do():
