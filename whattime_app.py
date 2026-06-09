@@ -7,7 +7,7 @@ import threading
 import base64
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '2.1.1'
+APP_VERSION = '2.1.2'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
