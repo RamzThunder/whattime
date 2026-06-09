@@ -168,6 +168,15 @@ h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; }
     font-family: inherit; color: #1a1a1a; transition: border-color 0.15s;
 }
 .text-row input:focus { outline: none; border-color: #000; }
+.number-input {
+    appearance: textfield;
+    -moz-appearance: textfield;
+}
+.number-input::-webkit-inner-spin-button,
+.number-input::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
 
 .rest-toggle-row {
     display: flex; align-items: center; justify-content: space-between;
@@ -502,6 +511,34 @@ body.settings-loading::before {
     </div>
 
     <div class="tab-panel" id="panel-personal">
+        <div class="text-section" style="margin-bottom:14px;">
+            <div class="text-section-title">컴시간 알리미 시간표 불러오기</div>
+            <div class="text-row">
+                <span class="text-row-label">학교 이름</span>
+                <input type="text" id="comciSchoolNameInput" placeholder="표시할 학교 이름">
+            </div>
+            <div class="text-row">
+                <span class="text-row-label">학교코드</span>
+                <input type="number" class="number-input" id="comciSchoolCodeInput" min="1" inputmode="numeric"
+                    placeholder="예: 84946">
+            </div>
+            <div class="text-row">
+                <span class="text-row-label">교사 번호</span>
+                <input type="number" class="number-input" id="comciTeacherNumberInput" min="1" inputmode="numeric"
+                    placeholder="교사 목록 순번">
+            </div>
+            <div class="startup-desc" style="line-height:1.45;margin:8px 0 10px;">
+                교사 번호는 컴시간 교사용 화면의 교사 목록에 표시되는 순번입니다.
+                컴시간이 학교 이름을 숨기는 경우 입력한 학교 이름으로 표시합니다.
+                입력한 교사의 이번 주차 시간표를 개인 시간표에 채웁니다.
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+                <div class="startup-desc" id="comciImportDesc">학교코드와 교사 번호를 입력하세요</div>
+                <button class="btn btn-save" id="comciImportBtn"
+                    style="font-size:0.82rem;padding:6px 14px;white-space:nowrap;"
+                    onclick="importComciSchedule()">이번 주 불러오기</button>
+            </div>
+        </div>
         <div style="font-size:0.8rem; color:#888; margin-bottom:6px;">수업을 입력할 요일을 선택하세요</div>
         <div class="days-row" id="personalDaysRow" style="margin-bottom:14px;"></div>
         <div class="col-headers personal-col-headers">
@@ -1139,6 +1176,9 @@ async function init() {
     renderDayChips();
     renderPersonalDayChips();
     renderPersonalList();
+    document.getElementById('comciSchoolNameInput').value = data.comci_school_name || '조암중학교';
+    document.getElementById('comciSchoolCodeInput').value = data.comci_school_code || 84946;
+    document.getElementById('comciTeacherNumberInput').value = data.comci_teacher_number || 7;
     renderRestDaySelectorChips();
     updateRestDayToggle();
     renderRestSchedule();
@@ -1397,6 +1437,9 @@ async function save() {
     });
     data.font_bold = document.getElementById('fontBoldCheck').checked;
     data.font_family = document.getElementById('fontSelect').value;
+    data.comci_school_name = document.getElementById('comciSchoolNameInput').value.trim();
+    data.comci_school_code = parseInt(document.getElementById('comciSchoolCodeInput').value) || 0;
+    data.comci_teacher_number = parseInt(document.getElementById('comciTeacherNumberInput').value) || 0;
     await window.pywebview.api.save_schedule(data);
     showToast('저장했어요! ✓');
 }
@@ -1454,6 +1497,55 @@ function renderPersonalList() {
         `;
         list.appendChild(row);
     });
+}
+
+async function importComciSchedule() {
+    const button = document.getElementById('comciImportBtn');
+    const desc = document.getElementById('comciImportDesc');
+    const enteredSchoolName = document.getElementById('comciSchoolNameInput').value.trim();
+    const schoolCode = parseInt(document.getElementById('comciSchoolCodeInput').value);
+    const teacherNumber = parseInt(document.getElementById('comciTeacherNumberInput').value);
+    if (!schoolCode || schoolCode < 1 || !teacherNumber || teacherNumber < 1) {
+        desc.textContent = '학교코드와 교사 번호를 1 이상의 숫자로 입력하세요';
+        showToast('컴시간 설정값을 확인해 주세요');
+        return;
+    }
+
+    button.disabled = true;
+    button.textContent = '불러오는 중';
+    desc.textContent = '컴시간 최신 시간표를 확인하고 있어요';
+
+    try {
+        const result = await window.pywebview.api.fetch_comci_schedule(schoolCode, teacherNumber);
+        if (!result.ok) throw new Error(result.error || '시간표를 불러오지 못했습니다.');
+
+        data.comci_school_name = enteredSchoolName;
+        data.comci_school_code = schoolCode;
+        data.comci_teacher_number = teacherNumber;
+        if (!data.personal) data.personal = {"1":[],"2":[],"3":[],"4":[],"5":[]};
+        [1,2,3,4,5].forEach(day => {
+            const schedule = getPersonalDaySchedule(String(day));
+            const imported = result.personal[String(day)] || [];
+            data.personal[String(day)] = schedule.map(item => {
+                const match = String(item.name || '').match(/^\s*(\d+)교시/);
+                if (!match) return {name: "", room: ""};
+                const entry = imported[parseInt(match[1]) - 1] || {};
+                return {name: entry.name || "", room: entry.room || ""};
+            });
+        });
+
+        renderPersonalList();
+        const displaySchoolName = enteredSchoolName ||
+            (result.school_name_hidden ? `학교코드 ${result.school_code}` : result.school_name);
+        desc.textContent = `${displaySchoolName} · ${result.teacher_number}번 ${result.teacher_name} · ${result.updated_at || '최신 자료'}`;
+        showToast('컴시간 시간표를 불러왔어요. 저장을 눌러 적용하세요.');
+    } catch (e) {
+        desc.textContent = e.message || '시간표를 불러오지 못했습니다.';
+        showToast('컴시간 시간표를 불러오지 못했어요');
+    } finally {
+        button.disabled = false;
+        button.textContent = '이번 주 불러오기';
+    }
 }
 
 function initDragDrop() {

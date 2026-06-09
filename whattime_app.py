@@ -4,9 +4,10 @@ import sys
 import json
 import copy
 import threading
+import base64
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '2.0.0'
+APP_VERSION = '2.1.0'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -132,6 +133,9 @@ DEFAULT_SCHEDULE = {
     "rest_days": [0, 6],
     "rest_schedules": {"0": [], "1": [], "2": [], "3": [], "4": [], "5": [], "6": []},
     "personal": {"1": [], "2": [], "3": [], "4": [], "5": []},
+    "comci_school_name": "조암중학교",
+    "comci_school_code": 84946,
+    "comci_teacher_number": 7,
     "end_text": "˚˖𓍢ִִ໋˚˖𓍢ִ✧˚.오늘 일정 종료˚˖𓍢ִִ໋˚˖𓍢ִ✧˚.",
     "rest_status_text": "학교 생각을 왜 하지",
     "rest_timer_prefix": "출근까지",
@@ -173,6 +177,105 @@ def _ssl_context():
 def _urlopen(req_or_url, timeout=None):
     import urllib.request
     return urllib.request.urlopen(req_or_url, timeout=timeout, context=_ssl_context())
+
+COMCI_API_URL = 'http://comci.net:4082/36179_T'
+DEFAULT_COMCI_SCHOOL_CODE = 84946
+DEFAULT_COMCI_TEACHER_NUMBER = 7
+
+def _decode_comci_json(raw):
+    text = raw.decode('utf-8', errors='replace').strip('\x00 \t\r\n')
+    decoder = json.JSONDecoder()
+    index = 0
+    first = None
+    while index < len(text):
+        data, end = decoder.raw_decode(text[index:])
+        if first is None:
+            first = data
+        if isinstance(data, dict) and '자료542' in data:
+            return data
+        index += end
+        while index < len(text) and text[index] in '\x00 \t\r\n':
+            index += 1
+    return first
+
+def _fetch_comci_raw(school_code, date_index=1):
+    import urllib.request
+    payload = f'73629_{int(school_code)}_0_{int(date_index)}'
+    query = base64.b64encode(payload.encode('ascii')).decode('ascii')
+    req = urllib.request.Request(
+        f'{COMCI_API_URL}?{query}',
+        headers={
+            'User-Agent': 'WhatTime/' + APP_VERSION,
+            'Accept': 'application/json,text/plain,*/*',
+            'Referer': 'http://comci.net:4082/th',
+            'x-requested-with': 'XMLHttpRequest',
+        },
+    )
+    with _urlopen(req, timeout=10) as response:
+        data = _decode_comci_json(response.read())
+    if not isinstance(data, dict) or '자료542' not in data:
+        raise ValueError('학교코드를 확인할 수 없거나 시간표 자료가 없습니다.')
+    return data
+
+def fetch_comci_teacher_schedule(school_code=DEFAULT_COMCI_SCHOOL_CODE, teacher_number=DEFAULT_COMCI_TEACHER_NUMBER):
+    try:
+        school_code = int(school_code)
+        teacher_number = int(teacher_number)
+    except (TypeError, ValueError):
+        raise ValueError('학교코드와 교사 번호는 숫자로 입력해 주세요.')
+    if school_code <= 0 or teacher_number <= 0:
+        raise ValueError('학교코드와 교사 번호는 1 이상의 숫자여야 합니다.')
+
+    data = _fetch_comci_raw(school_code, 1)
+    today_index = int(data.get('오늘r') or 1)
+    if today_index != 1:
+        data = _fetch_comci_raw(school_code, today_index)
+
+    teachers = data.get('자료446') or []
+    teacher_slots = data.get('자료542') or []
+    subjects = data.get('자료492') or []
+    if teacher_number >= len(teachers) or teacher_number >= len(teacher_slots):
+        max_teacher = max(0, min(len(teachers), len(teacher_slots)) - 1)
+        raise ValueError(f'교사 번호를 찾을 수 없습니다. 입력 가능한 범위는 1~{max_teacher}입니다.')
+
+    personal = {}
+    for day in range(1, 6):
+        day_slots = teacher_slots[teacher_number][day] if day < len(teacher_slots[teacher_number]) else []
+        entries = []
+        for period in range(1, 9):
+            raw_code = day_slots[period] if period < len(day_slots) else 0
+            changed = isinstance(raw_code, str) and raw_code.startswith('>')
+            try:
+                code = int(str(raw_code).lstrip('>'))
+            except (TypeError, ValueError):
+                code = 0
+
+            if code <= 0:
+                entries.append({'name': '', 'room': ''})
+                continue
+
+            class_code = code % 1000
+            subject_index = code // 1000
+            subject = subjects[subject_index] if subject_index < len(subjects) else ''
+            grade, class_num = divmod(class_code, 100)
+            room = f'{grade}-{class_num}' if grade and class_num else ''
+            entries.append({
+                'name': str(subject).replace('*', ''),
+                'room': room,
+                'changed': changed,
+            })
+        personal[str(day)] = entries
+
+    raw_school_name = str(data.get('학교명') or '')
+    return {
+        'school_code': school_code,
+        'school_name': raw_school_name or str(school_code),
+        'school_name_hidden': raw_school_name.startswith('컴시간'),
+        'teacher_name': teachers[teacher_number],
+        'teacher_number': teacher_number,
+        'updated_at': data.get('자료244') or '',
+        'personal': personal,
+    }
 
 def _fetch_latest_release():
     import urllib.request, json
@@ -436,6 +539,12 @@ class Api:
             main_window.evaluate_js('reloadSchedule()')
         threading.Timer(0.05, _do).start()
         return True
+
+    def fetch_comci_schedule(self, school_code, teacher_number):
+        try:
+            return {'ok': True, **fetch_comci_teacher_schedule(school_code, teacher_number)}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
 
     def set_preview_offset(self, offset_seconds):
         def _do():
