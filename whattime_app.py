@@ -7,7 +7,7 @@ import threading
 import base64
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '2.1.0'
+APP_VERSION = '2.1.1'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -825,7 +825,12 @@ class Api:
                     "  }\n"
                     "}\n"
                     "if (-not $copied) {\n"
-                    "  Write-UpdateLog 'copy never succeeded; app restart skipped to avoid duplicate processes'\n"
+                    "  Write-UpdateLog 'copy never succeeded; restarting existing app'\n"
+                    "  try {\n"
+                    "    Start-Process -FilePath $dst -WorkingDirectory $appDir\n"
+                    "  } catch {\n"
+                    "    Write-UpdateLog ('existing app restart failed: {0}' -f $_.Exception.Message)\n"
+                    "  }\n"
                     "  exit 1\n"
                     "}\n"
                     "try {\n"
@@ -848,11 +853,11 @@ class Api:
                     creationflags=0x08000000 | 0x00000200,
                     cwd=app_dir,
                     env=env,
+                    close_fds=True,
                 )
-            if IS_MAC:
-                threading.Timer(0.3, lambda: os._exit(0)).start()
-            else:
-                threading.Timer(0, main_window.destroy).start()
+            # 업데이트 대상 파일 잠금을 확실히 해제한다. Windows에서 창만
+            # destroy하면 설정 창/WebView 프로세스가 남아 exe 교체가 실패할 수 있다.
+            threading.Timer(0.3, lambda: os._exit(0)).start()
             return True
         except Exception:
             return False
