@@ -7,7 +7,7 @@ import threading
 import base64
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '2.1.3'
+APP_VERSION = '2.1.4'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -75,10 +75,9 @@ if not IS_MAC:
         return ctypes.get_last_error() != ERROR_ALREADY_EXISTS
 
     def _get_hwnd():
-        try:
-            return main_window.native.Handle.ToInt64()
-        except Exception:
-            return windll.user32.FindWindowW(None, WIN_TITLE)
+        # This function is called from worker/API threads. Accessing the
+        # pythonnet-backed WinForms object there can deadlock or crash.
+        return windll.user32.FindWindowW(None, WIN_TITLE)
 
     def _fix_transparency(hwnd):
         m = _MARGINS(-1, -1, -1, -1)
@@ -90,15 +89,6 @@ if not IS_MAC:
             return
         try:
             _fix_transparency(hwnd)
-        except Exception:
-            pass
-        try:
-            from System.Drawing import Color
-            native = main_window.native
-            native.BackColor = Color.Black
-            webview_control = getattr(native, 'webview', None)
-            if webview_control is not None and hasattr(webview_control, 'DefaultBackgroundColor'):
-                webview_control.DefaultBackgroundColor = Color.Transparent
         except Exception:
             pass
 
