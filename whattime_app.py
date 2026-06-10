@@ -7,7 +7,7 @@ import threading
 import base64
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '2.1.5'
+APP_VERSION = '2.1.6'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -95,27 +95,26 @@ if not IS_MAC:
     def _patch_edgechromium_transparency():
         from webview.platforms import edgechromium
 
-        def apply(edge):
-            if edge.pywebview_window.transparent:
-                edge.form.BackColor = edgechromium.Color.Black
-                edge.webview.DefaultBackgroundColor = edgechromium.Color.Transparent
+        original_edgechrome = edgechromium.EdgeChrome
 
-        original_ready = edgechromium.EdgeChrome.on_webview_ready
-        original_navigation_completed = edgechromium.EdgeChrome.on_navigation_completed
+        class WhatTimeEdgeChrome(original_edgechrome):
+            def _apply_transparency(self):
+                if self.pywebview_window.transparent:
+                    self.form.BackColor = edgechromium.Color.Black
+                    self.webview.DefaultBackgroundColor = edgechromium.Color.Transparent
 
-        def on_webview_ready(edge, sender, args):
-            result = original_ready(edge, sender, args)
-            if args.IsSuccess:
-                apply(edge)
-            return result
+            def on_webview_ready(self, sender, args):
+                result = super().on_webview_ready(sender, args)
+                if args.IsSuccess:
+                    self._apply_transparency()
+                return result
 
-        def on_navigation_completed(edge, sender, args):
-            result = original_navigation_completed(edge, sender, args)
-            apply(edge)
-            return result
+            def on_navigation_completed(self, sender, args):
+                result = super().on_navigation_completed(sender, args)
+                self._apply_transparency()
+                return result
 
-        edgechromium.EdgeChrome.on_webview_ready = on_webview_ready
-        edgechromium.EdgeChrome.on_navigation_completed = on_navigation_completed
+        edgechromium.EdgeChrome = WhatTimeEdgeChrome
 
 # ─────────────────────────────────────────
 # 기본 시정 데이터
