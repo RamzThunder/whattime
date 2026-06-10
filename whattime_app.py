@@ -7,7 +7,7 @@ import threading
 import base64
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '2.1.4'
+APP_VERSION = '2.1.5'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -91,6 +91,31 @@ if not IS_MAC:
             _fix_transparency(hwnd)
         except Exception:
             pass
+
+    def _patch_edgechromium_transparency():
+        from webview.platforms import edgechromium
+
+        def apply(edge):
+            if edge.pywebview_window.transparent:
+                edge.form.BackColor = edgechromium.Color.Black
+                edge.webview.DefaultBackgroundColor = edgechromium.Color.Transparent
+
+        original_ready = edgechromium.EdgeChrome.on_webview_ready
+        original_navigation_completed = edgechromium.EdgeChrome.on_navigation_completed
+
+        def on_webview_ready(edge, sender, args):
+            result = original_ready(edge, sender, args)
+            if args.IsSuccess:
+                apply(edge)
+            return result
+
+        def on_navigation_completed(edge, sender, args):
+            result = original_navigation_completed(edge, sender, args)
+            apply(edge)
+            return result
+
+        edgechromium.EdgeChrome.on_webview_ready = on_webview_ready
+        edgechromium.EdgeChrome.on_navigation_completed = on_navigation_completed
 
 # ─────────────────────────────────────────
 # 기본 시정 데이터
@@ -899,6 +924,9 @@ class Api:
 
 if not IS_MAC and not _ensure_single_instance():
     sys.exit(0)
+
+if not IS_MAC:
+    _patch_edgechromium_transparency()
 
 api = Api()
 
