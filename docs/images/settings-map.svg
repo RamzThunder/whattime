@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="500" viewBox="0 0 900 500">
+  <rect width="900" height="500" fill="#f5f7fa"/>
+  <text x="450" y="48" text-anchor="middle" font-family="sans-serif" font-size="28" font-weight="700">설정 화면 구성</text>
+  <g font-family="sans-serif">
+    <rect x="55" y="90" width="240" height="330" rx="18" fill="#ffffff" stroke="#d5d9df" stroke-width="2"/>
+    <text x="175" y="132" text-anchor="middle" font-size="22" font-weight="700">⚙ 설정</text>
+    <text x="82" y="178" font-size="16">• 부팅 시 자동 실행</text>
+    <text x="82" y="214" font-size="16">• 상단 바 배치</text>
+    <text x="82" y="250" font-size="16">• 글꼴과 글자 크기</text>
+    <text x="82" y="286" font-size="16">• 배경과 진행바 색상</text>
+    <text x="82" y="322" font-size="16">• 카운트다운 색상</text>
+
+    <rect x="330" y="90" width="240" height="330" rx="18" fill="#ffffff" stroke="#d5d9df" stroke-width="2"/>
+    <text x="450" y="132" text-anchor="middle" font-size="22" font-weight="700">📅 일정 관리</text>
+    <text x="357" y="178" font-size="16">• 일반 시정</text>
+    <text x="357" y="214" font-size="16">• 단축 시정과 적용 요일</text>
+    <text x="357" y="250" font-size="16">• 요일별 개인 시간표</text>
+    <text x="357" y="286" font-size="16">• 컴시간 알리미 불러오기</text>
+    <text x="357" y="322" font-size="16">• 쉬는 날과 특별 일정</text>
+
+    <rect x="605" y="90" width="240" height="330" rx="18" fill="#ffffff" stroke="#d5d9df" stroke-width="2"/>
+    <text x="725" y="132" text-anchor="middle" font-size="22" font-weight="700">🔧 고급</text>
+    <text x="632" y="178" font-size="16">• 업데이트</text>
+    <text x="632" y="214" font-size="16">• 백업, 복원, 초기화</text>
+    <text x="632" y="250" font-size="16">• 종 시간 보정</text>
+    <text x="632" y="286" font-size="16">• 밀리초와 종료 효과</text>
+    <text x="632" y="322" font-size="16">• 텍스트와 미리보기</text>
+  </g>
+  <text x="450" y="466" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#667085">변경 후 화면 아래쪽의 저장 버튼을 눌러 적용하세요.</text>
+</svg>
