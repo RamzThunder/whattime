@@ -37,6 +37,7 @@ h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; }
 }
 .toggle-input:checked + .toggle-label { background: #000; }
 .toggle-input:checked + .toggle-label::after { left: 23px; }
+.toggle-input:disabled + .toggle-label { opacity: 0.35; cursor: default; }
 
 .divider { height: 1px; background: #eee; margin-bottom: 16px; }
 
@@ -58,6 +59,15 @@ h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; }
     transition: all 0.15s; user-select: none;
 }
 .day-chip.selected { background: #000; color: #fff; border-color: #000; }
+
+.regular-day-checks { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 16px; }
+.regular-day-check {
+    display: flex; align-items: center; gap: 5px; padding: 6px 9px;
+    border: 1.5px solid #ddd; border-radius: 8px; cursor: pointer;
+    font-size: 0.8rem; color: #555; user-select: none;
+}
+.regular-day-check:has(input:checked) { border-color: #000; color: #000; background: #f5f5f4; }
+.regular-day-check input { width: 16px; height: 16px; margin: 0; accent-color: #000; cursor: pointer; }
 
 .schedule-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
 .period-row {
@@ -346,6 +356,7 @@ body.settings-loading::before {
     <button class="main-tab-btn active" data-tab="settings" onclick="switchMainTab('settings')">⚙️ 설정</button>
     <button class="main-tab-btn" data-tab="schedule" onclick="switchMainTab('schedule')">📅 일정 관리</button>
     <button class="main-tab-btn" data-tab="advanced" onclick="switchMainTab('advanced')">🔧 고급</button>
+    <button class="main-tab-btn" data-tab="labs" onclick="switchMainTab('labs')">🧪 실험실</button>
 </div>
 
 <!-- ── 설정 패널 ── -->
@@ -495,30 +506,48 @@ body.settings-loading::before {
 
     <div class="tabs">
         <button class="tab-btn active" data-tab="full" onclick="switchTab('full')">📅 일반 시정</button>
-        <button class="tab-btn" data-tab="short" onclick="switchTab('short')">⚡ 단축 시정</button>
+        <button class="tab-btn" data-tab="special" onclick="switchTab('special')">⚡ 단축(특별)시정</button>
         <button class="tab-btn" data-tab="personal" onclick="switchTab('personal')">📚 개인 시간표</button>
         <button class="tab-btn" data-tab="rest" onclick="switchTab('rest')">🏖 쉬는 날</button>
     </div>
 
-    <div id="shortDaysSection" style="display:none; margin-bottom:14px;">
-        <div style="font-size:0.8rem; color:#888; margin-bottom:6px;">단축수업 적용 요일</div>
-        <div class="days-row" id="daysRow"></div>
-    </div>
-
     <div class="tab-panel active" id="panel-full">
-        <div class="col-headers">
-            <span></span><span>교시 이름</span><span style="text-align:center">시작</span><span style="text-align:center">종료</span><span style="text-align:center;font-size:0.7rem">제외</span><span></span>
+        <div class="theme-section">
+            <div class="theme-section-title">7교시가 있는 요일</div>
+            <div class="startup-desc">체크한 날은 7교시까지, 체크하지 않은 날은 6교시까지만 표시해요.</div>
+            <div class="regular-day-checks" id="regularDaysChecks"></div>
+            <div class="col-headers">
+                <span></span><span>교시 이름</span><span style="text-align:center">시작</span><span style="text-align:center">종료</span><span style="text-align:center;font-size:0.7rem">제외</span><span></span>
+            </div>
+            <div class="schedule-list" id="list-full"></div>
+            <button class="add-btn" onclick="addRow('full')">+ 교시 추가</button>
         </div>
-        <div class="schedule-list" id="list-full"></div>
-        <button class="add-btn" onclick="addRow('full')">+ 교시 추가</button>
     </div>
 
-    <div class="tab-panel" id="panel-short">
+    <div class="tab-panel" id="panel-special">
+        <div class="text-section">
+            <div class="text-section-title">HWPX 시정표 불러오기</div>
+            <div class="startup-desc" id="hwpxImportDesc" style="line-height:1.45;margin-bottom:10px;">
+                표에서 교시명과 시작·종료 시각을 찾아 아래 특별 시정에 채워요.
+            </div>
+            <button class="data-btn" id="hwpxImportBtn" style="width:100%;"
+                onclick="importHwpxSchedule()">📄 HWPX 파일 선택</button>
+        </div>
+        <div class="theme-section">
+            <div class="theme-section-title">특별 시정 적용 날짜</div>
+            <div class="startup-desc" style="margin-bottom:8px;">추가한 날짜에만 일반 시정보다 우선 적용돼요</div>
+            <div style="display:flex;gap:7px;margin-bottom:10px;">
+                <input type="date" id="specialDateInput" class="preview-select" style="flex:1;">
+                <button class="preview-apply" onclick="addSpecialDate()">날짜 추가</button>
+            </div>
+            <div class="days-row" id="specialDatesRow"></div>
+            <div class="startup-desc" id="specialDatesEmpty">아직 추가한 날짜가 없어요.</div>
+        </div>
         <div class="col-headers">
             <span></span><span>교시 이름</span><span style="text-align:center">시작</span><span style="text-align:center">종료</span><span style="text-align:center;font-size:0.7rem">제외</span><span></span>
         </div>
-        <div class="schedule-list" id="list-short"></div>
-        <button class="add-btn" onclick="addRow('short')">+ 교시 추가</button>
+        <div class="schedule-list" id="list-special"></div>
+        <button class="add-btn" onclick="addRow('special')">+ 교시 추가</button>
     </div>
 
     <div class="tab-panel" id="panel-personal">
@@ -697,15 +726,10 @@ body.settings-loading::before {
     <div class="preview-section">
         <div>
             <div class="startup-label">🔍 시간 미리보기</div>
-            <div class="startup-desc">특정 요일·시각의 위젯을 미리 확인해요 (저장 안 됨)</div>
+            <div class="startup-desc">특정 날짜·시각의 위젯과 진도 저장 흐름을 시험해요 (실제 기록은 저장 안 됨)</div>
         </div>
         <div class="preview-controls">
-            <select id="previewDay" class="preview-select">
-                <option value="1">월요일</option><option value="2">화요일</option>
-                <option value="3">수요일</option><option value="4">목요일</option>
-                <option value="5">금요일</option><option value="6">토요일</option>
-                <option value="0">일요일</option>
-            </select>
+            <input type="date" id="previewDate" class="preview-select">
             <input type="number" id="previewHour" class="preview-num" min="0" max="23" value="9">
             <span class="preview-unit">시</span>
             <input type="number" id="previewMinute" class="preview-num" min="0" max="59" value="0">
@@ -718,6 +742,63 @@ body.settings-loading::before {
     </div>
 
 </div><!-- /main-panel-advanced -->
+
+<!-- ── 실험실 패널 ── -->
+<div id="main-panel-labs" class="main-panel">
+    <div class="text-section" style="margin-top:12px;">
+        <div class="text-section-title">🧪 실험실</div>
+        <div class="startup-desc" style="line-height:1.5;">
+            시험 중인 기능이에요. 기능별 설정과 저장된 데이터는 스위치를 꺼도 유지됩니다.
+        </div>
+    </div>
+
+    <div class="startup-section">
+        <div>
+            <div class="startup-label">📚 진도 자동 저장</div>
+            <div class="startup-desc">수업 종료 버튼과 다음 수업의 지난 진도 안내를 사용해요</div>
+        </div>
+        <div class="toggle-wrap">
+            <input type="checkbox" class="toggle-input" id="progressAutoSaveToggle" onchange="onProgressAutoSaveToggle(this.checked)">
+            <label class="toggle-label" for="progressAutoSaveToggle"></label>
+        </div>
+    </div>
+
+    <div class="startup-section">
+        <div>
+            <div class="startup-label">📸 자동 저장할 때 화면 캡처</div>
+            <div class="startup-desc">화면 전체를 앱의 로컬 데이터 폴더에 함께 저장해요</div>
+        </div>
+        <div class="toggle-wrap">
+            <input type="checkbox" class="toggle-input" id="progressAutoCaptureToggle" onchange="data.progress_auto_capture=this.checked">
+            <label class="toggle-label" for="progressAutoCaptureToggle"></label>
+        </div>
+    </div>
+
+    <div class="startup-section">
+        <div>
+            <div class="startup-label">⚡ 특별 시정</div>
+            <div class="startup-desc">지정한 날짜에 단축·행사 시정을 적용해요</div>
+        </div>
+        <div class="toggle-wrap">
+            <input type="checkbox" class="toggle-input" id="specialScheduleToggle" onchange="data.special_schedule_enabled=this.checked">
+            <label class="toggle-label" for="specialScheduleToggle"></label>
+        </div>
+    </div>
+
+    <div class="startup-section">
+        <div>
+            <div class="startup-label">🍱 1학년 5교시를 점심시간에 배치</div>
+            <div class="startup-desc" style="line-height:1.45;">
+                컴시간의 5교시가 1학년 수업이면 점심 블록에 넣어요. 다음 불러오기부터 적용돼요.
+            </div>
+        </div>
+        <div class="toggle-wrap">
+            <input type="checkbox" class="toggle-input" id="comciJoamFirstGradeFifthToggle"
+                onchange="onComciJoamFirstGradeFifthChange(this.checked)">
+            <label class="toggle-label" for="comciJoamFirstGradeFifthToggle"></label>
+        </div>
+    </div>
+</div><!-- /main-panel-labs -->
 
 <div class="footer">
     <button class="btn btn-cancel" onclick="cancel()">취소</button>
@@ -1159,7 +1240,7 @@ const DAY_NAMES = ["일","월","화","수","목","금","토"];
 const WEEKDAYS = [1,2,3,4,5];
 const ALL_DAYS_MON_FIRST = [1,2,3,4,5,6,0];
 
-let data = { full: [], short: [], short_days: [3, 5], rest_days: [0, 6], rest_schedules: {"0":[],"1":[],"2":[],"3":[],"4":[],"5":[],"6":[]} };
+let data = { full: [], special: [], seven_period_days: [1, 2, 4], special_dates: [], rest_days: [0, 6], rest_schedules: {"0":[],"1":[],"2":[],"3":[],"4":[],"5":[],"6":[]} };
 let currentTab = 'full';
 let restDay = "0";
 let settingsReady = false;
@@ -1171,6 +1252,24 @@ function markSettingsReady() {
 
 async function init() {
     data = await window.pywebview.api.get_schedule();
+    if (!Array.isArray(data.seven_period_days)) {
+        const oldSixDays = Array.isArray(data.six_period_days)
+            ? data.six_period_days
+            : (Array.isArray(data.short_days) ? data.short_days : [3, 5]);
+        data.seven_period_days = WEEKDAYS.filter(day => !oldSixDays.includes(day));
+    }
+    if (!Array.isArray(data.special_dates)) {
+        data.special_dates = [];
+        const legacyDays = Array.isArray(data.special_days) ? data.special_days : [];
+        const today = new Date();
+        legacyDays.forEach(day => {
+            const date = new Date(today);
+            date.setDate(today.getDate() + ((day - today.getDay() + 7) % 7));
+            data.special_dates.push(toLocalDateKey(date));
+        });
+    }
+    data.special_dates = [...new Set(data.special_dates.filter(isValidDateKey))].sort();
+    if (!Array.isArray(data.special)) data.special = [];
     if (!data.personal) data.personal = {"1":[],"2":[],"3":[],"4":[],"5":[]};
     if (!data.rest_days) data.rest_days = [0, 6];
     if (!data.rest_schedules) {
@@ -1186,13 +1285,18 @@ async function init() {
     });
 
     renderList('full');
-    renderList('short');
-    renderDayChips();
+    renderList('special');
+    renderRegularDayChecks();
+    renderSpecialDates();
     renderPersonalDayChips();
     renderPersonalList();
-    document.getElementById('comciSchoolNameInput').value = data.comci_school_name || '조암중학교';
-    document.getElementById('comciSchoolCodeInput').value = data.comci_school_code || 84946;
-    document.getElementById('comciTeacherNumberInput').value = data.comci_teacher_number || 7;
+    document.getElementById('comciSchoolNameInput').value = data.comci_school_name || '';
+    document.getElementById('comciSchoolCodeInput').value = data.comci_school_code || '';
+    document.getElementById('comciTeacherNumberInput').value = data.comci_teacher_number || '';
+    if (data.comci_joam_first_grade_fifth_period === undefined)
+        data.comci_joam_first_grade_fifth_period = false;
+    document.getElementById('comciJoamFirstGradeFifthToggle').checked =
+        !!data.comci_joam_first_grade_fifth_period;
     renderRestDaySelectorChips();
     updateRestDayToggle();
     renderRestSchedule();
@@ -1224,6 +1328,10 @@ async function init() {
     const bellEnabled = !!data.bell_alert_enabled;
     document.getElementById('bellAlertToggle').checked = bellEnabled;
     document.getElementById('bellAlertColorSection').style.display = bellEnabled ? 'block' : 'none';
+    document.getElementById('progressAutoSaveToggle').checked = data.progress_auto_save !== false;
+    document.getElementById('progressAutoCaptureToggle').checked = !!data.progress_auto_capture;
+    document.getElementById('specialScheduleToggle').checked = data.special_schedule_enabled !== false;
+    updateLabDependencies();
 
     const scale = data.font_scale || 1.0;
     document.getElementById('fontSizeDisplay').textContent = Math.round(scale * 100) + '%';
@@ -1232,6 +1340,10 @@ async function init() {
     loadFontSelect();
 
     document.getElementById('showMsToggle').checked = data.show_ms !== false;
+
+    const todayKey = toLocalDateKey(new Date());
+    document.getElementById('specialDateInput').value = todayKey;
+    document.getElementById('previewDate').value = todayKey;
 
     const isMac = navigator.platform.startsWith('Mac');
     document.getElementById('startupDesc').textContent =
@@ -1250,15 +1362,18 @@ async function init() {
 }
 
 function applyPreview() {
-    const day = parseInt(document.getElementById('previewDay').value);
+    const dateValue = document.getElementById('previewDate').value;
     const hour = parseInt(document.getElementById('previewHour').value);
     const minute = parseInt(document.getElementById('previewMinute').value);
     const second = parseInt(document.getElementById('previewSecond').value) || 0;
+    if (!isValidDateKey(dateValue)) {
+        showToast('미리보기 날짜를 선택해 주세요');
+        return;
+    }
+    const [year, month, day] = dateValue.split('-').map(Number);
     const now = new Date();
-    const dayDiff = day - now.getDay();
-    const targetSecs = hour*3600 + minute*60 + second;
-    const currentSecs = now.getHours()*3600 + now.getMinutes()*60 + now.getSeconds();
-    const offsetSeconds = Math.round(dayDiff * 86400 + (targetSecs - currentSecs));
+    const target = new Date(year, month - 1, day, hour, minute, second, 0);
+    const offsetSeconds = Math.round((target.getTime() - now.getTime()) / 1000);
     window.pywebview.api.set_preview_offset(offsetSeconds);
     document.getElementById('clearPreviewBtn').style.display = 'inline-block';
 }
@@ -1282,32 +1397,107 @@ function onBellAlertToggle(checked) {
     document.getElementById('bellAlertColorSection').style.display = checked ? 'block' : 'none';
 }
 
+function onProgressAutoSaveToggle(checked) {
+    data.progress_auto_save = checked;
+    updateLabDependencies();
+}
+
+function updateLabDependencies() {
+    const enabled = document.getElementById('progressAutoSaveToggle').checked;
+    document.getElementById('progressAutoCaptureToggle').disabled = !enabled;
+}
+
 function onTopBarStyleChange(checked) {
     data.top_bar_style = checked ? 'windows' : 'mac';
     document.getElementById('topBarStyleDesc').textContent =
         checked ? 'Windows 스타일: ⚙️ ▣ ⊟  /  📌 − ✕' : 'Mac 스타일: ✕ − 📌  /  ▣ ⊟ ⚙️';
 }
 
-function renderDayChips() {
-    const row = document.getElementById('daysRow');
+function onComciJoamFirstGradeFifthChange(checked) {
+    data.comci_joam_first_grade_fifth_period = checked;
+}
+
+function renderScheduleDayChips(rowId, selectedDays, onSelect) {
+    const row = document.getElementById(rowId);
     row.innerHTML = '';
     WEEKDAYS.forEach(d => {
         const chip = document.createElement('div');
-        chip.className = 'day-chip' + (data.short_days.includes(d) ? ' selected' : '');
+        chip.className = 'day-chip' + (selectedDays.includes(d) ? ' selected' : '');
         chip.textContent = DAY_NAMES[d] + '요일';
-        chip.onclick = () => toggleDay(d, chip);
+        chip.onclick = () => onSelect(d);
         row.appendChild(chip);
     });
 }
 
-function toggleDay(d, chip) {
-    if (data.short_days.includes(d)) {
-        data.short_days = data.short_days.filter(x => x !== d);
-        chip.classList.remove('selected');
-    } else {
-        data.short_days.push(d);
-        chip.classList.add('selected');
+function renderRegularDayChecks() {
+    const row = document.getElementById('regularDaysChecks');
+    const sevenDays = data.seven_period_days || [];
+    row.innerHTML = '';
+    WEEKDAYS.forEach(day => {
+        const label = document.createElement('label');
+        label.className = 'regular-day-check';
+        label.innerHTML = `<input type="checkbox" ${sevenDays.includes(day) ? 'checked' : ''}>
+            <span>${DAY_NAMES[day]}요일</span>`;
+        label.querySelector('input').onchange = event => setSevenPeriodDay(day, event.target.checked);
+        row.appendChild(label);
+    });
+}
+
+function setSevenPeriodDay(day, checked) {
+    const sevenDays = new Set(data.seven_period_days || []);
+    if (checked) sevenDays.add(day);
+    else sevenDays.delete(day);
+    data.seven_period_days = [...sevenDays].sort((a, b) => a - b);
+    renderPersonalList();
+}
+
+function toLocalDateKey(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function isValidDateKey(value) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
+}
+
+function formatSpecialDate(value) {
+    const [year, month, day] = value.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    return `${year}.${String(month).padStart(2, '0')}.${String(day).padStart(2, '0')} (${DAY_NAMES[date.getDay()]})`;
+}
+
+function addSpecialDate() {
+    const input = document.getElementById('specialDateInput');
+    const value = input.value;
+    if (!isValidDateKey(value)) {
+        showToast('적용할 날짜를 선택해 주세요');
+        return;
     }
+    if (!data.special_dates.includes(value)) data.special_dates.push(value);
+    data.special_dates.sort();
+    renderSpecialDates();
+}
+
+function removeSpecialDate(value) {
+    data.special_dates = (data.special_dates || []).filter(date => date !== value);
+    renderSpecialDates();
+}
+
+function renderSpecialDates() {
+    const row = document.getElementById('specialDatesRow');
+    const dates = data.special_dates || [];
+    row.innerHTML = '';
+    dates.forEach(value => {
+        const chip = document.createElement('button');
+        chip.className = 'day-chip selected';
+        chip.textContent = `${formatSpecialDate(value)}  ×`;
+        chip.title = '이 날짜 삭제';
+        chip.onclick = () => removeSpecialDate(value);
+        row.appendChild(chip);
+    });
+    document.getElementById('specialDatesEmpty').style.display = dates.length ? 'none' : 'block';
 }
 
 function renderRestDaySelectorChips() {
@@ -1437,7 +1627,6 @@ function switchTab(tab) {
     });
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     document.getElementById('panel-' + tab).classList.add('active');
-    document.getElementById('shortDaysSection').style.display = tab === 'short' ? 'block' : 'none';
 }
 
 async function save() {
@@ -1454,6 +1643,12 @@ async function save() {
     data.comci_school_name = document.getElementById('comciSchoolNameInput').value.trim();
     data.comci_school_code = parseInt(document.getElementById('comciSchoolCodeInput').value) || 0;
     data.comci_teacher_number = parseInt(document.getElementById('comciTeacherNumberInput').value) || 0;
+    data.comci_joam_first_grade_fifth_period =
+        document.getElementById('comciJoamFirstGradeFifthToggle').checked;
+    delete data.short;
+    delete data.short_days;
+    delete data.six_period_days;
+    delete data.special_days;
     await window.pywebview.api.save_schedule(data);
     showToast('저장했어요! ✓');
 }
@@ -1482,8 +1677,24 @@ function renderPersonalDayChips() {
 
 function getPersonalDaySchedule(dayStr) {
     const d = parseInt(dayStr);
-    const shortDays = data.short_days || [3, 5];
-    return shortDays.includes(d) ? data.short : data.full;
+    const sevenPeriodDays = data.seven_period_days || [1, 2, 4];
+    return sevenPeriodDays.includes(d) ? data.full : deriveSixPeriodSchedule(data.full);
+}
+
+function deriveSixPeriodSchedule(baseSchedule) {
+    const schedule = Array.isArray(baseSchedule) ? baseSchedule : [];
+    const seventhIndex = schedule.findIndex(item => /^\s*7교시/.test(String(item.name || '')));
+    if (seventhIndex < 0) return schedule;
+    const sixth = schedule.find(item => /^\s*6교시/.test(String(item.name || '')));
+    return schedule
+        .filter((item, index) => index !== seventhIndex)
+        .map((item, filteredIndex) => {
+            const originalIndex = filteredIndex < seventhIndex ? filteredIndex : filteredIndex + 1;
+            const isTerminal = /수업\s*끝|수업\s*종료|일정\s*종료/.test(String(item.name || ''));
+            if (sixth && originalIndex > seventhIndex && isTerminal)
+                return {...item, start: sixth.end};
+            return item;
+        });
 }
 
 function renderPersonalList() {
@@ -1511,6 +1722,58 @@ function renderPersonalList() {
         `;
         list.appendChild(row);
     });
+}
+
+function isComciFirstGradeEntry(entry) {
+    return String((entry && entry.room) || '').trim().startsWith('1-');
+}
+
+function getComciEntryForScheduleItem(item, imported) {
+    const name = String((item && item.name) || '');
+    const firstGradeFifth = imported[4] || {};
+    const useJoamRule = !!data.comci_joam_first_grade_fifth_period;
+
+    if (useJoamRule && name.includes('점심') && name.includes('1학년 5교시')) {
+        return isComciFirstGradeEntry(firstGradeFifth) ? firstGradeFifth : {};
+    }
+    if (useJoamRule && name.includes('5교시') && name.includes('1학년 점심')) {
+        return isComciFirstGradeEntry(firstGradeFifth) ? {} : firstGradeFifth;
+    }
+
+    const match = name.match(/^\s*(\d+)교시/);
+    if (!match) return {};
+    return imported[parseInt(match[1]) - 1] || {};
+}
+
+async function importHwpxSchedule() {
+    const button = document.getElementById('hwpxImportBtn');
+    const desc = document.getElementById('hwpxImportDesc');
+    button.disabled = true;
+    button.textContent = 'HWPX 읽는 중...';
+    desc.textContent = '문서 안의 시정표를 찾고 있어요.';
+    try {
+        const result = await window.pywebview.api.import_hwpx_schedule();
+        if (result.cancelled) {
+            desc.textContent = '표에서 교시명과 시작·종료 시각을 찾아 아래 특별 시정에 채워요.';
+            return;
+        }
+        if (!result.ok) throw new Error(result.error || 'HWPX 시정표를 읽지 못했습니다.');
+        data.special = (result.schedule || []).map(item => ({
+            name: item.name || '',
+            start: item.start || '00:00',
+            end: item.end || '00:00'
+        }));
+        renderList('special');
+        renderPersonalList();
+        desc.textContent = `${result.filename} · ${data.special.length}개 일정을 불러왔어요. 저장을 눌러 적용하세요.`;
+        showToast('HWPX 특별 시정을 불러왔어요');
+    } catch (e) {
+        desc.textContent = e.message || 'HWPX 시정표를 읽지 못했습니다.';
+        showToast('HWPX 시정표를 불러오지 못했어요');
+    } finally {
+        button.disabled = false;
+        button.textContent = '📄 HWPX 파일 선택';
+    }
 }
 
 async function importComciSchedule() {
@@ -1541,9 +1804,7 @@ async function importComciSchedule() {
             const schedule = getPersonalDaySchedule(String(day));
             const imported = result.personal[String(day)] || [];
             data.personal[String(day)] = schedule.map(item => {
-                const match = String(item.name || '').match(/^\s*(\d+)교시/);
-                if (!match) return {name: "", room: ""};
-                const entry = imported[parseInt(match[1]) - 1] || {};
+                const entry = getComciEntryForScheduleItem(item, imported);
                 return {name: entry.name || "", room: entry.room || ""};
             });
         });
@@ -1620,9 +1881,9 @@ function initDragDrop() {
     setupDragDrop('list-full',
         () => data.full,
         () => renderList('full'));
-    setupDragDrop('list-short',
-        () => data.short,
-        () => renderList('short'));
+    setupDragDrop('list-special',
+        () => data.special,
+        () => renderList('special'));
     setupDragDrop('list-rest',
         () => data.rest_schedules[restDay],
         renderRestSchedule);

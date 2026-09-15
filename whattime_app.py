@@ -5,9 +5,13 @@ import json
 import copy
 import threading
 import base64
+import datetime
+import hashlib
+import subprocess
+import tempfile
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '2.1.6'
+APP_VERSION = '2.2.0'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -40,8 +44,12 @@ else:
 
 SCHEDULE_PATH      = os.path.join(data_dir, 'schedule.json')
 USER_DEFAULT_PATH  = os.path.join(data_dir, 'user_default.json')
+PROGRESS_PATH      = os.path.join(data_dir, 'lesson_progress.json')
+PROGRESS_IMAGE_DIR = os.path.join(data_dir, 'lesson_progress_images')
+PROGRESS_LOCK      = threading.RLock()
 MAIN_HTML          = os.path.join(base_dir, 'whattime.html')
 SETTINGS_HTML      = os.path.join(base_dir, 'settings.html')
+PROGRESS_HTML      = os.path.join(base_dir, 'progress_popup.html')
 
 WEBVIEW_STORAGE_PATH = None
 if not IS_MAC:
@@ -132,24 +140,17 @@ DEFAULT_SCHEDULE = {
         {"name": "7교시",              "start": "14:45", "end": "15:30"},
         {"name": "수업 끝^-^",         "start": "15:30", "end": "16:20"}
     ],
-    "short": [
-        {"name": "수업 전",            "start": "08:00", "end": "08:35"},
-        {"name": "1교시",              "start": "08:40", "end": "09:25"},
-        {"name": "2교시",              "start": "09:35", "end": "10:20"},
-        {"name": "3교시",              "start": "10:30", "end": "11:15"},
-        {"name": "4교시",              "start": "11:25", "end": "12:10"},
-        {"name": "점심 (1학년 5교시)", "start": "12:15", "end": "13:00"},
-        {"name": "5교시 (1학년 점심)", "start": "13:00", "end": "13:45"},
-        {"name": "6교시",              "start": "13:50", "end": "14:35"},
-        {"name": "수업 끝^-^",         "start": "14:35", "end": "16:20"}
-    ],
-    "short_days": [3, 5],
+    "special": [],
+    "special_schedule_enabled": True,
+    "seven_period_days": [1, 2, 4],
+    "special_dates": [],
     "rest_days": [0, 6],
     "rest_schedules": {"0": [], "1": [], "2": [], "3": [], "4": [], "5": [], "6": []},
     "personal": {"1": [], "2": [], "3": [], "4": [], "5": []},
-    "comci_school_name": "조암중학교",
-    "comci_school_code": 84946,
-    "comci_teacher_number": 7,
+    "comci_school_name": "",
+    "comci_school_code": None,
+    "comci_teacher_number": None,
+    "comci_joam_first_grade_fifth_period": False,
     "end_text": "˚˖𓍢ִִ໋˚˖𓍢ִ✧˚.오늘 일정 종료˚˖𓍢ִִ໋˚˖𓍢ִ✧˚.",
     "rest_status_text": "학교 생각을 왜 하지",
     "rest_timer_prefix": "출근까지",
@@ -171,7 +172,9 @@ DEFAULT_SCHEDULE = {
     "show_ms": True,
     "bell_alert_enabled": False,
     "bell_alert_color": "#ff3b30",
-    "custom_colors_bell_alert": []
+    "custom_colors_bell_alert": [],
+    "progress_auto_save": True,
+    "progress_auto_capture": True
 }
 
 def _version_tuple(v):
@@ -194,8 +197,8 @@ def _urlopen(req_or_url, timeout=None):
 
 COMCI_API_URL = 'http://comci.net:4082/36179_T'
 COMCI_SEARCH_URL = 'http://comci.net:4082/36179'
-DEFAULT_COMCI_SCHOOL_CODE = 84946
-DEFAULT_COMCI_TEACHER_NUMBER = 7
+DEFAULT_COMCI_SCHOOL_CODE = None
+DEFAULT_COMCI_TEACHER_NUMBER = None
 
 def _decode_comci_json(raw):
     text = raw.decode('utf-8', errors='replace').strip('\x00 \t\r\n')
@@ -322,6 +325,139 @@ def fetch_comci_teacher_schedule(school_code=DEFAULT_COMCI_SCHOOL_CODE, teacher_
         'personal': personal,
     }
 
+def _xml_local_name(tag):
+    return str(tag).rsplit('}', 1)[-1]
+
+def _hwpx_element_text(element):
+    pieces = []
+    for node in element.iter():
+        if _xml_local_name(node.tag) == 't' and node.text:
+            text = ' '.join(node.text.split())
+            if text:
+                pieces.append(text)
+    return ' '.join(pieces).strip()
+
+def _hwpx_table_rows(root):
+    tables = []
+    for table in root.iter():
+        if _xml_local_name(table.tag) != 'tbl':
+            continue
+        rows = []
+        for row in table.iter():
+            if _xml_local_name(row.tag) != 'tr':
+                continue
+            cells = [
+                _hwpx_element_text(cell)
+                for cell in row.iter()
+                if _xml_local_name(cell.tag) == 'tc'
+            ]
+            cells = [cell for cell in cells if cell]
+            if cells:
+                rows.append(cells)
+        if rows:
+            tables.append(rows)
+    return tables
+
+def _schedule_entry_from_hwpx_row(cells, fallback_period):
+    import re
+    time_pattern = re.compile(r'(?<!\d)([01]?\d|2[0-3])\s*[:：]\s*([0-5]\d)(?!\d)')
+    joined = ' | '.join(cells)
+    matches = list(time_pattern.finditer(joined))
+    if len(matches) < 2:
+        return None
+
+    start_hour, start_minute = map(int, matches[0].groups())
+    end_hour, end_minute = map(int, matches[1].groups())
+    start_total = start_hour * 60 + start_minute
+    end_total = end_hour * 60 + end_minute
+    if end_total <= start_total or end_total - start_total > 180:
+        return None
+
+    label_candidates = []
+    for cell in cells:
+        without_times = time_pattern.sub(' ', cell)
+        without_times = re.sub(r'\b\d+\s*분\b', ' ', without_times)
+        cleaned = re.sub(r'[~∼〜～\-–—:：|()\[\]]+', ' ', without_times)
+        cleaned = ' '.join(cleaned.split()).strip()
+        if cleaned:
+            label_candidates.append(cleaned)
+
+    label = ''
+    for candidate in label_candidates:
+        if re.search(r'\d+\s*교시|점심|조회|종례|청소|수업|행사|활동', candidate):
+            label = candidate
+            break
+    if not label and label_candidates:
+        label = label_candidates[0]
+    if re.fullmatch(r'\d+', label):
+        label += '교시'
+    if not label or label in ('구분', '시간', '시정', '일정'):
+        label = f'{fallback_period}교시'
+
+    return {
+        'name': label,
+        'start': f'{start_hour:02d}:{start_minute:02d}',
+        'end': f'{end_hour:02d}:{end_minute:02d}',
+    }
+
+def _schedule_from_hwpx_rows(rows):
+    schedule = []
+    seen = set()
+    for cells in rows:
+        entry = _schedule_entry_from_hwpx_row(cells, len(schedule) + 1)
+        if not entry:
+            continue
+        key = (entry['name'], entry['start'], entry['end'])
+        if key in seen:
+            continue
+        seen.add(key)
+        schedule.append(entry)
+    return schedule
+
+def parse_hwpx_schedule(path):
+    import zipfile
+    import xml.etree.ElementTree as ET
+
+    if not str(path).lower().endswith('.hwpx'):
+        raise ValueError('HWPX 파일을 선택해 주세요.')
+    if os.path.getsize(path) > 50 * 1024 * 1024:
+        raise ValueError('HWPX 파일이 너무 큽니다. 50MB 이하 파일을 선택해 주세요.')
+
+    tables = []
+    paragraph_rows = []
+    total_xml_size = 0
+    try:
+        with zipfile.ZipFile(path, 'r') as archive:
+            section_names = sorted(
+                name for name in archive.namelist()
+                if name.startswith('Contents/section') and name.lower().endswith('.xml')
+            )
+            if not section_names:
+                raise ValueError('HWPX 본문을 찾을 수 없습니다.')
+            for name in section_names:
+                info = archive.getinfo(name)
+                total_xml_size += info.file_size
+                if total_xml_size > 20 * 1024 * 1024:
+                    raise ValueError('HWPX 본문이 너무 큽니다.')
+                root = ET.fromstring(archive.read(name))
+                tables.extend(_hwpx_table_rows(root))
+                for paragraph in root.iter():
+                    if _xml_local_name(paragraph.tag) == 'p':
+                        text = _hwpx_element_text(paragraph)
+                        if text:
+                            paragraph_rows.append([text])
+    except zipfile.BadZipFile:
+        raise ValueError('올바른 HWPX 파일이 아닙니다.')
+    except ET.ParseError:
+        raise ValueError('HWPX 본문 XML을 읽을 수 없습니다.')
+
+    candidates = [_schedule_from_hwpx_rows(rows) for rows in tables]
+    candidates = [schedule for schedule in candidates if schedule]
+    schedule = max(candidates, key=len) if candidates else _schedule_from_hwpx_rows(paragraph_rows)
+    if len(schedule) < 2:
+        raise ValueError('교시명과 시작·종료 시각이 있는 시정표를 찾지 못했습니다.')
+    return schedule
+
 def _fetch_latest_release():
     import urllib.request, json
     try:
@@ -364,12 +500,69 @@ def save_schedule(data):
     with open(SCHEDULE_PATH, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
+def _load_progress():
+    if os.path.exists(PROGRESS_PATH):
+        try:
+            with open(PROGRESS_PATH, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return data
+        except Exception:
+            pass
+    return {'classes': {}}
+
+def _save_progress(data):
+    temp_path = PROGRESS_PATH + '.tmp'
+    with open(temp_path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(temp_path, PROGRESS_PATH)
+
+def _capture_desktop(path):
+    """Capture the desktop using only OS-provided facilities."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    if IS_MAC:
+        result = subprocess.run(
+            ['/usr/sbin/screencapture', '-x', path],
+            capture_output=True, timeout=15,
+        )
+    else:
+        script = (
+            "Add-Type -AssemblyName System.Windows.Forms;"
+            "Add-Type -AssemblyName System.Drawing;"
+            "$b=[System.Windows.Forms.SystemInformation]::VirtualScreen;"
+            "$i=New-Object System.Drawing.Bitmap $b.Width,$b.Height;"
+            "$g=[System.Drawing.Graphics]::FromImage($i);"
+            "$g.CopyFromScreen($b.Left,$b.Top,0,0,$i.Size);"
+            "$i.Save($args[0],[System.Drawing.Imaging.ImageFormat]::Png);"
+            "$g.Dispose();$i.Dispose()"
+        )
+        result = subprocess.run(
+            ['powershell', '-NoProfile', '-NonInteractive', '-Command', script, path],
+            capture_output=True, timeout=15,
+        )
+    if result.returncode != 0 or not os.path.exists(path):
+        message = result.stderr.decode(errors='replace').strip()
+        raise RuntimeError(message or '화면 캡처에 실패했습니다.')
+
+def _progress_public_record(record, include_image=False):
+    result = {key: value for key, value in record.items() if key != 'image_path'}
+    result['has_image'] = bool(record.get('image_path') and os.path.exists(record['image_path']))
+    if include_image and result['has_image']:
+        try:
+            with open(record['image_path'], 'rb') as f:
+                result['image_data_url'] = 'data:image/png;base64,' + base64.b64encode(f.read()).decode('ascii')
+        except Exception:
+            result['has_image'] = False
+    return result
+
 # ─────────────────────────────────────────
 # JS API
 # ─────────────────────────────────────────
 class Api:
     def __init__(self):
         self.settings_window = None
+        self.progress_window = None
+        self._progress_popup_payload = None
         self._pinned = False
         self._font_cache = None
         self._font_loading = False
@@ -386,10 +579,18 @@ class Api:
     def set_mini_mode(self, is_mini):
         def _do():
             if is_mini:
-                main_window.resize(320, 130)
+                main_window.resize(320, 175)
             else:
                 main_window.resize(340, 700)
         threading.Timer(0, _do).start()
+
+    def set_lesson_dialog_open(self, opened, is_mini):
+        if not is_mini:
+            return True
+        def _do():
+            main_window.resize(360, 560 if opened else 175)
+        threading.Timer(0, _do).start()
+        return True
 
     def open_settings(self):
         if self._settings_opening:
@@ -420,6 +621,49 @@ class Api:
         def on_closed():
             self.settings_window = None
         self.settings_window.events.closed += on_closed
+
+    def open_progress_popup(self, payload):
+        if not isinstance(payload, dict):
+            return False
+        self._progress_popup_payload = payload
+        if self.progress_window is not None and self.progress_window in webview.windows:
+            encoded = json.dumps(payload, ensure_ascii=False)
+            def _update():
+                try:
+                    self.progress_window.evaluate_js(f'renderProgress({encoded})')
+                    self.progress_window.on_top = True
+                except Exception:
+                    pass
+            threading.Timer(0, _update).start()
+            return True
+
+        self.progress_window = webview.create_window(
+            title='지난 수업 진도',
+            url=PROGRESS_HTML,
+            width=460,
+            height=580,
+            min_size=(340, 280),
+            resizable=True,
+            on_top=True,
+            js_api=self,
+        )
+
+        def on_closed():
+            self.progress_window = None
+        self.progress_window.events.closed += on_closed
+        return True
+
+    def get_progress_popup_data(self):
+        return self._progress_popup_payload
+
+    def close_progress_popup(self):
+        if self.progress_window:
+            try:
+                self.progress_window.destroy()
+            except Exception:
+                pass
+            self.progress_window = None
+        return True
 
     def get_startup_enabled(self):
         if IS_MAC:
@@ -584,6 +828,76 @@ class Api:
             main_window.evaluate_js('reloadSchedule()')
         threading.Timer(0.05, _do).start()
         return True
+
+    def get_lesson_progress(self, class_name, include_image=False):
+        class_name = str(class_name or '').strip()
+        if not class_name:
+            return None
+        with PROGRESS_LOCK:
+            record = _load_progress().get('classes', {}).get(class_name)
+            return _progress_public_record(record, bool(include_image)) if record else None
+
+    def save_lesson_progress(self, class_name, subject='', note='', capture=False,
+                             lesson_id='', automatic=False):
+        class_name = str(class_name or '').strip()
+        subject = str(subject or '').strip()
+        note = str(note or '').strip()[:2000]
+        lesson_id = str(lesson_id or '').strip()[:100]
+        if not class_name:
+            return {'ok': False, 'error': '반 정보가 없는 수업은 진도를 저장할 수 없습니다.'}
+
+        with PROGRESS_LOCK:
+            data = _load_progress()
+            classes = data.setdefault('classes', {})
+            previous = classes.get(class_name) or {}
+            if automatic and lesson_id and previous.get('lesson_id') == lesson_id:
+                return {'ok': True, 'duplicate': True, 'record': _progress_public_record(previous)}
+
+            now = datetime.datetime.now().astimezone()
+            record = {
+                'class_name': class_name,
+                'subject': subject,
+                'note': note,
+                'saved_at': now.isoformat(timespec='seconds'),
+                'saved_at_label': now.strftime('%Y.%m.%d %H:%M'),
+                'lesson_id': lesson_id,
+                'automatic': bool(automatic),
+            }
+            capture_error = None
+            if capture:
+                digest = hashlib.sha256(class_name.encode('utf-8')).hexdigest()[:12]
+                filename = now.strftime('%Y%m%d_%H%M%S_') + digest + '.png'
+                image_path = os.path.join(PROGRESS_IMAGE_DIR, filename)
+                try:
+                    _capture_desktop(image_path)
+                    record['image_path'] = image_path
+                except Exception as e:
+                    capture_error = str(e)
+
+            classes[class_name] = record
+            _save_progress(data)
+            old_image = previous.get('image_path')
+            if old_image and old_image != record.get('image_path') and os.path.exists(old_image):
+                try:
+                    os.remove(old_image)
+                except OSError:
+                    pass
+            result = {'ok': True, 'record': _progress_public_record(record)}
+            if capture_error:
+                result['capture_error'] = capture_error
+            return result
+
+    def capture_lesson_preview(self):
+        """Capture a disposable image for the settings preview without saving a record."""
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                image_path = os.path.join(temp_dir, 'preview.png')
+                _capture_desktop(image_path)
+                with open(image_path, 'rb') as f:
+                    encoded = base64.b64encode(f.read()).decode('ascii')
+            return {'ok': True, 'image_data_url': 'data:image/png;base64,' + encoded}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
 
     def fetch_comci_schedule(self, school_code, teacher_number):
         try:
@@ -775,6 +1089,26 @@ class Api:
             return True
         except Exception:
             return False
+
+    def import_hwpx_schedule(self):
+        if not self.settings_window:
+            return {'ok': False, 'error': '설정 창을 먼저 열어 주세요.'}
+        try:
+            result = self.settings_window.create_file_dialog(
+                webview.OPEN_DIALOG,
+                file_types=('HWPX files (*.hwpx)', 'All files (*.*)')
+            )
+            if not result:
+                return {'ok': False, 'cancelled': True}
+            path = result[0] if isinstance(result, (list, tuple)) else result
+            schedule = parse_hwpx_schedule(path)
+            return {
+                'ok': True,
+                'filename': os.path.basename(path),
+                'schedule': schedule,
+            }
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
 
     def set_as_default(self):
         try:

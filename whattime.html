@@ -171,6 +171,25 @@ body.mini.has-bg .widget-container { border-radius: 12px; padding: 6px 8px; }
     text-align: center;
 }
 body.mini .mini-timer { display: block; }
+body.mini .progress-card { display:none; }
+body.mini .lesson-actions.show { display:flex; }
+body.mini .lesson-end-btn { padding:6px 10px; font-size:.74rem; }
+.lesson-actions { display:none; gap:7px; justify-content:center; }
+.lesson-actions.show { display:flex; }
+.lesson-end-btn { border:0; border-radius:8px; padding:7px 12px; cursor:pointer; font:inherit; font-size:.78rem; font-weight:700; background:var(--active-bg); color:var(--active-text); }
+.progress-card { display:none; text-align:left; padding:10px 12px; border-radius:9px; background:var(--inactive-bg); color:var(--card-fg); font-size:.78rem; line-height:1.4; }
+.progress-card.show { display:block; }
+.progress-card-title { font-weight:700; margin-bottom:3px; }
+.progress-card-meta { color:var(--card-fg-dim); font-size:.72rem; }
+.progress-card-note { margin-top:5px; white-space:pre-wrap; overflow-wrap:anywhere; }
+.progress-thumb { width:100%; max-height:150px; object-fit:cover; object-position:top; border-radius:7px; margin-top:7px; cursor:pointer; }
+.progress-thumb.expanded { max-height:none; object-fit:contain; }
+.lesson-modal { position:fixed; inset:0; z-index:9100; display:none; align-items:center; justify-content:center; padding:18px; background:rgba(0,0,0,.28); -webkit-app-region:no-drag; }
+.lesson-modal.show { display:flex; }
+.lesson-panel { width:min(290px,100%); max-height:calc(100vh - 36px); overflow:auto; border-radius:10px; padding:16px; background:var(--widget-bg); color:var(--card-fg); box-shadow:0 10px 34px rgba(0,0,0,.24); text-align:left; }
+.lesson-panel textarea { width:100%; min-height:78px; resize:vertical; box-sizing:border-box; margin:9px 0; padding:8px; border:1px solid var(--inactive-bg); border-radius:7px; font:inherit; }
+.lesson-check { display:flex; gap:7px; align-items:center; font-size:.78rem; color:var(--card-fg-dim); }
+.lesson-modal-actions { display:flex; justify-content:flex-end; gap:7px; margin-top:12px; }
 @media (prefers-color-scheme: dark) {
 :root {
     --widget-bg: rgba(30,30,30,0.92);
@@ -276,6 +295,9 @@ body.mini .mini-timer { display: block; }
         <div class="current-period" id="currentPeriod"></div>
         <div class="next-timer" id="nextTimer"></div>
     </div>
+    <div class="lesson-actions" id="lessonActions">
+        <button class="lesson-end-btn" id="lessonEndBtn" onclick="openLessonEndModal()">수업 종료 · 진도 저장</button>
+    </div>
     <div class="timetable-container" id="timetable"></div>
     <div class="mini-timer" id="miniTimer"></div>
     <div class="opacity-row">
@@ -284,6 +306,18 @@ body.mini .mini-timer { display: block; }
             min="10" max="100" value="100"
             oninput="applyOpacity(this.value)"
             onchange="saveOpacity(this.value)">
+    </div>
+</div>
+<div class="lesson-modal" id="lessonModal">
+    <div class="lesson-panel">
+        <div class="update-title" id="lessonModalTitle">수업 진도 저장</div>
+        <div class="progress-card-meta">다음 같은 반 수업 때 이 기록을 보여드려요.</div>
+        <textarea id="lessonNote" maxlength="2000" placeholder="예: 교과서 42쪽까지, 다음 시간 3번 문제부터"></textarea>
+        <label class="lesson-check"><input type="checkbox" id="lessonCapture" checked> 현재 화면 함께 저장</label>
+        <div class="lesson-modal-actions">
+            <button class="update-action secondary" onclick="closeLessonEndModal()">취소</button>
+            <button class="update-action primary" id="lessonSaveBtn" onclick="saveCurrentLesson(false)">저장</button>
+        </div>
     </div>
 </div>
 <div class="update-modal" id="updateModal">
@@ -305,6 +339,11 @@ let isPinned = false;
 let previewOffset = null;
 let _fastRenderUntil = 0;
 let _startupUpdateUrl = null;
+let activeLesson = null;
+let observedLesson = null;
+let lessonBeingEdited = null;
+let progressLoadedLessonId = null;
+let isProgressPopupOpen = false;
 
 function formatCountdown(leftMs, prefix, alwaysMs = false) {
     if (alwaysMs && leftMs > 0) {
@@ -413,12 +452,18 @@ async function reloadSchedule() {
 }
 
 function setPreviewOffset(seconds) {
+    observedLesson = null;
+    activeLesson = null;
+    progressLoadedLessonId = null;
     previewOffset = seconds;
     document.body.classList.add('preview-mode');
 }
 
 function clearPreviewOffset() {
     previewOffset = null;
+    observedLesson = null;
+    activeLesson = null;
+    progressLoadedLessonId = null;
     document.body.classList.remove('preview-mode');
 }
 
@@ -505,14 +550,172 @@ function toggleMiniMode() {
     window.pywebview.api.set_mini_mode(isMiniMode);
 }
 
-function getTodaySchedule(dayIndex) {
+function lessonId(now, index, personal) {
+    const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+    return `${y}-${m}-${d}:${now.getDay()}:${index}:${personal.room || ''}`;
+}
+
+function openLessonEndModal() {
+    if (!activeLesson) return;
+    lessonBeingEdited = activeLesson;
+    document.getElementById('lessonModalTitle').textContent = previewOffset === null
+        ? `${activeLesson.className} 수업 진도 저장`
+        : `${activeLesson.className} 진도 저장 미리보기`;
+    document.getElementById('lessonNote').value = '';
+    document.getElementById('lessonCapture').checked = true;
+    document.getElementById('lessonModal').classList.add('show');
+    window.pywebview.api.set_lesson_dialog_open(true, isMiniMode);
+    document.getElementById('lessonNote').focus();
+}
+
+function closeLessonEndModal() {
+    lessonBeingEdited = null;
+    document.getElementById('lessonModal').classList.remove('show');
+    window.pywebview.api.set_lesson_dialog_open(false, isMiniMode);
+}
+
+async function saveLesson(lesson, note, capture, automatic) {
+    if (!lesson) return;
+    const result = await window.pywebview.api.save_lesson_progress(
+        lesson.className, lesson.subject, note || '', !!capture, lesson.id, !!automatic);
+    if (!result || !result.ok) throw new Error(result?.error || '진도를 저장하지 못했습니다.');
+    return result;
+}
+
+async function saveCurrentLesson(automatic=false) {
+    const lesson = lessonBeingEdited || activeLesson || observedLesson;
+    if (!lesson) return;
+    const btn = document.getElementById('lessonSaveBtn');
+    if (!automatic) { btn.disabled = true; btn.textContent = '저장 중'; }
+    try {
+        const note = automatic ? '' : document.getElementById('lessonNote').value;
+        const capture = automatic ? !!scheduleData.progress_auto_capture : document.getElementById('lessonCapture').checked;
+        if (!automatic) {
+            closeLessonEndModal();
+            await new Promise(resolve => setTimeout(resolve, 150));
+        }
+        if (!automatic && previewOffset !== null) {
+            let imageDataUrl = '';
+            let captureError = '';
+            if (capture) {
+                const previewCapture = await window.pywebview.api.capture_lesson_preview();
+                if (previewCapture?.ok) imageDataUrl = previewCapture.image_data_url || '';
+                else captureError = previewCapture?.error || '화면 캡처에 실패했습니다.';
+            }
+            showPreviewSavedProgress(lesson, note, imageDataUrl);
+            if (captureError) alert(`미리보기 화면 캡처에 실패했습니다.\n${captureError}`);
+            return;
+        }
+        const result = await saveLesson(lesson, note, capture, automatic);
+        if (result.capture_error) alert(`진도는 저장했지만 화면 캡처는 실패했습니다.\n${result.capture_error}`);
+    } catch (e) {
+        if (!automatic) alert(e.message || '진도를 저장하지 못했습니다.');
+    } finally {
+        if (!automatic) { btn.disabled = false; btn.textContent = '저장'; }
+    }
+}
+
+function showPreviewSavedProgress(lesson, note, imageDataUrl='') {
+    openProgressWindow({
+        preview: true,
+        title: `${lesson.className} · 미리보기 결과`,
+        meta: '테스트 기록 · 실제로 저장되지 않음',
+        note: note || (imageDataUrl ? '메모 없이 화면만 저장한 모습입니다.' : '메모나 화면을 추가하면 여기에 표시됩니다.'),
+        image_data_url: imageDataUrl
+    });
+}
+
+function openProgressWindow(payload) {
+    isProgressPopupOpen = true;
+    window.pywebview.api.open_progress_popup(payload);
+}
+
+function dismissPreviousProgress() {
+    if (!isProgressPopupOpen) return;
+    isProgressPopupOpen = false;
+    window.pywebview.api.close_progress_popup();
+}
+
+async function autoFinishLesson(lesson) {
+    if (scheduleData.progress_auto_save === false || !scheduleData.progress_auto_capture) return;
+    if (lessonBeingEdited && lessonBeingEdited.id === lesson.id) return;
+    try { await saveLesson(lesson, '', !!scheduleData.progress_auto_capture, true); } catch (e) {}
+}
+
+async function showPreviousProgress(lesson, previewDemo=false) {
+    if (!lesson || progressLoadedLessonId === lesson.id) return;
+    progressLoadedLessonId = lesson.id;
+    try {
+        const record = await window.pywebview.api.get_lesson_progress(lesson.className, true);
+        if ((!record || record.lesson_id === lesson.id) && previewDemo) {
+            if (!activeLesson || activeLesson.id !== lesson.id) return;
+            openProgressWindow({
+                preview: true,
+                title: `${lesson.className} · 지난 진도 미리보기`,
+                meta: '지난 수업 · 예시 기록',
+                note: '예: 교과서 42쪽까지 · 다음 시간 3번 문제부터',
+                image_data_url: ''
+            });
+            return;
+        }
+        if (!record || record.lesson_id === lesson.id) return;
+        if (!activeLesson || activeLesson.id !== lesson.id) return;
+        openProgressWindow({
+            preview: false,
+            title: `${lesson.className} · 지난 진도`,
+            meta: [record.saved_at_label, record.subject].filter(Boolean).join(' · '),
+            note: record.note || (record.has_image ? '' : '저장된 메모나 화면이 없습니다.'),
+            image_data_url: record.image_data_url || ''
+        });
+    } catch (e) {}
+}
+
+function deriveSixPeriodSchedule(baseSchedule) {
+    const schedule = Array.isArray(baseSchedule) ? baseSchedule : [];
+    const seventhIndex = schedule.findIndex(item => /^\s*7교시/.test(String(item.name || '')));
+    if (seventhIndex < 0) return schedule;
+    const sixth = schedule.find(item => /^\s*6교시/.test(String(item.name || '')));
+    return schedule
+        .filter((item, index) => index !== seventhIndex)
+        .map((item, filteredIndex) => {
+            const originalIndex = filteredIndex < seventhIndex ? filteredIndex : filteredIndex + 1;
+            const isTerminal = /수업\s*끝|수업\s*종료|일정\s*종료/.test(String(item.name || ''));
+            if (sixth && originalIndex > seventhIndex && isTerminal)
+                return {...item, start: sixth.end};
+            return item;
+        });
+}
+
+function localDateKey(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function getTodaySchedule(dateOrDay) {
     if (!scheduleData) return [];
+    const hasDate = dateOrDay instanceof Date;
+    const dayIndex = hasDate ? dateOrDay.getDay() : Number(dateOrDay);
     const restDays = scheduleData.rest_days ?? [0, 6];
     if (restDays.includes(dayIndex)) {
         return (scheduleData.rest_schedules && scheduleData.rest_schedules[String(dayIndex)]) || [];
     }
-    const shortDays = scheduleData.short_days || [3, 5];
-    return shortDays.includes(dayIndex) ? scheduleData.short : scheduleData.full;
+    const specialSchedule = scheduleData.special || [];
+    const specialDates = scheduleData.special_dates;
+    const isSpecialDate = hasDate && Array.isArray(specialDates)
+        ? specialDates.includes(localDateKey(dateOrDay))
+        : (!Array.isArray(specialDates) && (scheduleData.special_days || []).includes(dayIndex));
+    if (scheduleData.special_schedule_enabled !== false && isSpecialDate && specialSchedule.length > 0)
+        return specialSchedule;
+    let sevenPeriodDays = scheduleData.seven_period_days;
+    if (!Array.isArray(sevenPeriodDays)) {
+        const oldSixDays = scheduleData.six_period_days || scheduleData.short_days || [3, 5];
+        sevenPeriodDays = [1, 2, 3, 4, 5].filter(day => !oldSixDays.includes(day));
+    }
+    return sevenPeriodDays.includes(dayIndex)
+        ? scheduleData.full
+        : deriveSixPeriodSchedule(scheduleData.full);
 }
 
 function formatDate(date) {
@@ -541,7 +744,7 @@ function getNextSchoolDay(now) {
         const d = new Date(now);
         d.setDate(now.getDate() + i);
         d.setHours(8, 20, 0, 0);
-        if (getTodaySchedule(d.getDay()).length > 0) return d;
+        if (getTodaySchedule(d).length > 0) return d;
     }
     const d = new Date(now);
     d.setDate(now.getDate() + 7);
@@ -575,9 +778,10 @@ function getItemProgress(sMin, eMin, currentMinutes, currentSeconds) {
     return Math.max(0, Math.min(100, (elapsedSec / totalSec) * 100));
 }
 
-function getYesterdayOverflowItem(dayIndex, currentMinutes) {
-    const prevDay = (dayIndex + 6) % 7;
-    const prevSchedule = getTodaySchedule(prevDay);
+function getYesterdayOverflowItem(now, currentMinutes) {
+    const previousDate = new Date(now);
+    previousDate.setDate(now.getDate() - 1);
+    const prevSchedule = getTodaySchedule(previousDate);
     for (let i = prevSchedule.length - 1; i >= 0; i--) {
         const item = prevSchedule[i];
         const sMin = toMinutes(item.start), eMin = toMinutes(item.end);
@@ -603,7 +807,7 @@ function render() {
     const currentMinutes = now.getHours()*60+now.getMinutes();
     const currentSeconds = now.getHours()*3600+now.getMinutes()*60+now.getSeconds();
     const currentMs = now.getHours()*3600000 + now.getMinutes()*60000 + now.getSeconds()*1000 + now.getMilliseconds();
-    const todaySchedule = getTodaySchedule(now.getDay());
+    const todaySchedule = getTodaySchedule(now);
 
     const alwaysMs = scheduleData.show_ms !== false;
     const endText = scheduleData.end_text || "˚˖𓍢ִִ໋˚˖𓍢ִ✧˚.오늘 일정 종료˚˖𓍢ִִ໋˚˖𓍢ִ✧˚.";
@@ -617,9 +821,13 @@ function render() {
 
     const restDays = scheduleData.rest_days ?? [0, 6];
     const isRestDay = restDays.includes(now.getDay());
-    const overflowItem = getYesterdayOverflowItem(now.getDay(), currentMinutes);
+    const overflowItem = getYesterdayOverflowItem(now, currentMinutes);
 
     if (isRestDay && todaySchedule.length === 0 && !overflowItem) {
+        if (previewOffset === null && observedLesson) autoFinishLesson(observedLesson);
+        if (previewOffset === null) { activeLesson = null; observedLesson = null; }
+        document.getElementById('lessonActions').classList.remove('show');
+        dismissPreviousProgress();
         const nextSchoolDate = getNextSchoolDay(now);
         const nextDayName = weekNames[nextSchoolDate.getDay()];
         const diff = nextSchoolDate - now;
@@ -669,6 +877,7 @@ function render() {
 
     const personalSchedule = (scheduleData.personal && scheduleData.personal[String(now.getDay())]) || [];
     let activePersonal = null;
+    let currentLesson = null;
 
     todaySchedule.forEach((item, i) => {
         const block = document.createElement("div");
@@ -692,6 +901,19 @@ function render() {
                 activeName = item.name;
                 miniActiveItem = item;
                 if (personalEntry) activePersonal = personalEntry;
+                if (personalEntry && String(personalEntry.room || '').trim()) {
+                    currentLesson = {
+                        id: lessonId(now, i, personalEntry),
+                        className: String(personalEntry.room).trim(),
+                        subject: String(personalEntry.name || '').trim()
+                    };
+                } else if (previewOffset !== null) {
+                    currentLesson = {
+                        id: lessonId(now, i, {room: '미리보기 반'}),
+                        className: '미리보기 반',
+                        subject: String(personalEntry?.name || item.name || '').trim()
+                    };
+                }
             }
             pct = getItemProgress(sMin, eMin, currentMinutes, currentSeconds);
 
@@ -743,6 +965,30 @@ function render() {
         if (personalInfo) periodDisplay += ' · ' + personalInfo;
     }
     document.getElementById("currentPeriod").textContent = periodDisplay;
+
+    if (scheduleData.progress_auto_save === false) currentLesson = null;
+
+    if (previewOffset === null) {
+        document.getElementById('lessonEndBtn').textContent = '수업 종료 · 진도 저장';
+        if (observedLesson && (!currentLesson || currentLesson.id !== observedLesson.id)) autoFinishLesson(observedLesson);
+        activeLesson = currentLesson;
+        observedLesson = currentLesson;
+        if (currentLesson) showPreviousProgress(currentLesson);
+        document.getElementById('lessonActions').classList.toggle('show', !!currentLesson);
+        if (!currentLesson) {
+            progressLoadedLessonId = null;
+            dismissPreviousProgress();
+        }
+    } else {
+        activeLesson = currentLesson;
+        document.getElementById('lessonActions').classList.toggle('show', !!currentLesson);
+        document.getElementById('lessonEndBtn').textContent = '수업 종료 · 기능 미리보기';
+        if (currentLesson) showPreviousProgress(currentLesson, true);
+        else {
+            progressLoadedLessonId = null;
+            dismissPreviousProgress();
+        }
+    }
 
     const workStart=toMinutes("08:20"), commuteStart=toMinutes("06:00");
     const leaveBlock=todaySchedule.find(i=>i.name==="수업 끝^-^");
