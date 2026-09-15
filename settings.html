@@ -756,6 +756,8 @@ body.settings-loading::before {
         <div>
             <div class="startup-label">📚 진도 자동 저장</div>
             <div class="startup-desc">수업 종료 버튼과 다음 수업의 지난 진도 안내를 사용해요</div>
+            <button class="data-btn" style="width:auto;padding:6px 12px;margin-top:8px;"
+                onclick="openProgressHistory()">진도 기록 열기</button>
         </div>
         <div class="toggle-wrap">
             <input type="checkbox" class="toggle-input" id="progressAutoSaveToggle" onchange="onProgressAutoSaveToggle(this.checked)">
@@ -771,6 +773,18 @@ body.settings-loading::before {
         <div class="toggle-wrap">
             <input type="checkbox" class="toggle-input" id="progressAutoCaptureToggle" onchange="data.progress_auto_capture=this.checked">
             <label class="toggle-label" for="progressAutoCaptureToggle"></label>
+        </div>
+    </div>
+
+    <div class="startup-section">
+        <div>
+            <div class="startup-label">📊 수업 종료 시 PowerPoint 종료</div>
+            <div class="startup-desc" id="powerPointQuitDesc">macOS 전용 · 저장하지 않은 문서는 PowerPoint가 저장 여부를 물어봐요</div>
+        </div>
+        <div class="toggle-wrap">
+            <input type="checkbox" class="toggle-input" id="powerPointQuitToggle"
+                onchange="data.quit_powerpoint_on_lesson_end=this.checked">
+            <label class="toggle-label" for="powerPointQuitToggle"></label>
         </div>
     </div>
 
@@ -1330,6 +1344,7 @@ async function init() {
     document.getElementById('bellAlertColorSection').style.display = bellEnabled ? 'block' : 'none';
     document.getElementById('progressAutoSaveToggle').checked = data.progress_auto_save !== false;
     document.getElementById('progressAutoCaptureToggle').checked = !!data.progress_auto_capture;
+    document.getElementById('powerPointQuitToggle').checked = !!data.quit_powerpoint_on_lesson_end;
     document.getElementById('specialScheduleToggle').checked = data.special_schedule_enabled === true;
     updateLabDependencies();
     updateSpecialScheduleAvailability();
@@ -1347,6 +1362,10 @@ async function init() {
     document.getElementById('previewDate').value = todayKey;
 
     const isMac = navigator.platform.startsWith('Mac');
+    if (!isMac) {
+        document.getElementById('powerPointQuitToggle').disabled = true;
+        document.getElementById('powerPointQuitDesc').textContent = 'macOS에서만 사용할 수 있어요';
+    }
     document.getElementById('startupDesc').textContent =
         isMac ? 'Mac 로그인 시 자동으로 켜져요' : 'Windows 시작 시 자동으로 켜져요';
 
@@ -1384,6 +1403,10 @@ function clearPreview() {
     document.getElementById('clearPreviewBtn').style.display = 'none';
 }
 
+function openProgressHistory() {
+    window.pywebview.api.open_progress_history();
+}
+
 function adjustOffset(delta) {
     data.time_offset_seconds = (data.time_offset_seconds || 0) + delta;
     document.getElementById('offsetDisplay').textContent = data.time_offset_seconds + '초';
@@ -1406,6 +1429,8 @@ function onProgressAutoSaveToggle(checked) {
 function updateLabDependencies() {
     const enabled = document.getElementById('progressAutoSaveToggle').checked;
     document.getElementById('progressAutoCaptureToggle').disabled = !enabled;
+    document.getElementById('powerPointQuitToggle').disabled =
+        !enabled || !navigator.platform.startsWith('Mac');
 }
 
 function onSpecialScheduleToggle(checked) {

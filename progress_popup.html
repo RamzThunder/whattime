@@ -30,20 +30,27 @@ h1 { margin: 0; font-size: 1.2rem; line-height: 1.35; }
     object-position: top; border: 1px solid #e7e7e3; border-radius: 9px;
     background: #eee;
 }
-.actions { display: flex; justify-content: flex-end; margin-top: 18px; }
+.actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; }
+.history-nav { display: none; align-items: center; gap: 7px; min-width: 0; }
+.history-nav.show { display: flex; }
+.history-position { min-width: 64px; color: #666; font-size: .78rem; text-align: center; white-space: nowrap; }
 button {
     border: 0; border-radius: 8px; padding: 9px 18px;
     background: #111; color: #fff; cursor: pointer;
     font: inherit; font-size: .86rem; font-weight: 700;
 }
 button:hover { opacity: .78; }
+.nav-btn { padding: 7px 10px; background: #ececea; color: #222; }
+button:disabled { opacity: .3; cursor: default; }
 @media (prefers-color-scheme: dark) {
     body { background: #202020; color: #fff; }
     .panel { background: #292929; border-color: #3a3a3a; }
     .meta { color: #aaa; }
+    .history-position { color: #aaa; }
     .note { background: #363636; }
     .image-wrap img { border-color: #444; background: #181818; }
     button { background: #fff; color: #111; }
+    .nav-btn { background: #444; color: #fff; }
 }
 </style>
 </head>
@@ -54,12 +61,35 @@ button:hover { opacity: .78; }
     <div class="meta" id="meta"></div>
     <div class="note" id="note"></div>
     <div class="image-wrap" id="imageWrap"></div>
-    <div class="actions"><button onclick="closePopup()">확인</button></div>
+    <div class="actions">
+        <div class="history-nav" id="historyNav">
+            <button class="nav-btn" id="previousRecordBtn" aria-label="이전 기록" onclick="changeRecord(-1)">〈</button>
+            <span class="history-position" id="historyPosition"></span>
+            <button class="nav-btn" id="nextRecordBtn" aria-label="다음 기록" onclick="changeRecord(1)">〉</button>
+        </div>
+        <button onclick="closePopup()">확인</button>
+    </div>
 </main>
 <script>
+let popupRecords = [];
+let popupRecordIndex = 0;
+
 function renderProgress(data) {
     data = data || {};
-    document.getElementById('eyebrow').textContent = data.preview ? 'PREVIEW' : 'NEXT CLASS';
+    if (Array.isArray(data.records) && data.records.length) {
+        popupRecords = data.records;
+        popupRecordIndex = Math.max(0, Math.min(
+            popupRecords.length - 1, Number(data.initial_index) || 0));
+    } else {
+        popupRecords = [data];
+        popupRecordIndex = 0;
+    }
+    renderCurrentRecord();
+}
+
+function renderCurrentRecord() {
+    const data = popupRecords[popupRecordIndex] || {};
+    document.getElementById('eyebrow').textContent = data.eyebrow || (data.preview ? 'PREVIEW' : 'NEXT CLASS');
     document.getElementById('title').textContent = data.title || '지난 수업 진도';
     document.getElementById('meta').textContent = data.meta || '';
     const note = document.getElementById('note');
@@ -73,6 +103,19 @@ function renderProgress(data) {
         image.alt = '지난 수업 종료 화면';
         imageWrap.appendChild(image);
     }
+    const hasHistory = popupRecords.length > 1;
+    document.getElementById('historyNav').classList.toggle('show', hasHistory);
+    document.getElementById('historyPosition').textContent =
+        data.nav_label || `${popupRecordIndex + 1} / ${popupRecords.length}`;
+    document.getElementById('previousRecordBtn').disabled = popupRecordIndex === 0;
+    document.getElementById('nextRecordBtn').disabled = popupRecordIndex === popupRecords.length - 1;
+}
+
+function changeRecord(delta) {
+    const next = Math.max(0, Math.min(popupRecords.length - 1, popupRecordIndex + delta));
+    if (next === popupRecordIndex) return;
+    popupRecordIndex = next;
+    renderCurrentRecord();
 }
 
 async function init() {

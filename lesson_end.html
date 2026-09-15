@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+* { box-sizing:border-box; }
+:root { --bg:#f5f5f3; --panel:#fff; --text:#1b1b1b; --dim:#858585; --line:#deded9; --soft:#f1f1ee; }
+body {
+    margin:0; min-height:100vh; padding:20px;
+    display:flex; align-items:center; justify-content:center;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic",sans-serif;
+    background:var(--bg); color:var(--text);
+}
+.panel {
+    width:100%; padding:20px; border:1px solid var(--line); border-radius:13px;
+    background:var(--panel); box-shadow:0 8px 30px rgba(0,0,0,.08);
+}
+h1 { margin:0; font-size:1.15rem; line-height:1.4; }
+.description { margin-top:5px; color:var(--dim); font-size:.78rem; }
+textarea {
+    display:block; width:100%; min-height:105px; margin-top:14px; padding:11px 12px;
+    resize:vertical; border:1px solid var(--line); border-radius:9px;
+    outline:none; background:var(--panel); color:var(--text); font:inherit; font-size:.88rem; line-height:1.45;
+}
+textarea:focus { border-color:#2f6df6; box-shadow:0 0 0 2px rgba(47,109,246,.12); }
+.capture { display:flex; align-items:center; gap:7px; margin-top:11px; color:var(--dim); font-size:.8rem; }
+.actions { display:flex; justify-content:flex-end; gap:7px; margin-top:16px; }
+button { border:0; border-radius:8px; padding:8px 16px; cursor:pointer; font:inherit; font-size:.84rem; font-weight:700; }
+.secondary { background:var(--soft); color:var(--text); }
+.primary { background:#111; color:#fff; }
+button:disabled { opacity:.45; cursor:default; }
+@media (prefers-color-scheme:dark) {
+    :root { --bg:#202020; --panel:#292929; --text:#f5f5f5; --dim:#aaa; --line:#414141; --soft:#383838; }
+    .primary { background:#fff; color:#111; }
+}
+</style>
+</head>
+<body>
+<main class="panel">
+    <h1 id="title">수업 진도 저장</h1>
+    <div class="description" id="description">다음 같은 반 수업 때 이 기록을 보여드려요.</div>
+    <textarea id="note" maxlength="2000" placeholder="예: 교과서 42쪽까지, 다음 시간 3번 문제부터"></textarea>
+    <label class="capture"><input type="checkbox" id="capture" checked> 현재 화면 함께 저장</label>
+    <div class="actions">
+        <button class="secondary" onclick="cancel()">취소</button>
+        <button class="primary" id="saveButton" onclick="submitLessonEnd()">저장</button>
+    </div>
+</main>
+<script>
+function renderLessonEnd(data) {
+    data = data || {};
+    document.getElementById('title').textContent = data.title || '수업 진도 저장';
+    document.getElementById('description').textContent = data.description || '';
+    document.getElementById('note').value = data.note || '';
+    document.getElementById('capture').checked = data.capture !== false;
+    document.getElementById('saveButton').disabled = false;
+    document.getElementById('saveButton').textContent = '저장';
+    setTimeout(() => document.getElementById('note').focus(), 0);
+}
+
+async function init() {
+    const data = await window.pywebview.api.get_lesson_end_dialog_data();
+    renderLessonEnd(data);
+}
+
+async function submitLessonEnd() {
+    const button = document.getElementById('saveButton');
+    button.disabled = true;
+    button.textContent = '저장 중';
+    try {
+        await window.pywebview.api.submit_lesson_end_dialog(
+            document.getElementById('note').value,
+            document.getElementById('capture').checked,
+        );
+    } catch (e) {
+        button.disabled = false;
+        button.textContent = '다시 시도';
+    }
+}
+
+function cancel() {
+    window.pywebview.api.close_lesson_end_dialog();
+}
+
+document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') cancel();
+    if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') submitLessonEnd();
+});
+window.addEventListener('pywebviewready', init);
+</script>
+</body>
+</html>

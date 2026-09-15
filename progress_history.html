@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+* { box-sizing: border-box; }
+:root {
+    --bg:#f5f5f3; --panel:#fff; --line:#e7e7e3; --text:#1b1b1b;
+    --dim:#858585; --soft:#f1f1ee; --accent:#2f6df6;
+}
+body {
+    margin:0; min-height:100vh; padding:22px;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic",sans-serif;
+    background:var(--bg); color:var(--text);
+}
+.shell { max-width:980px; margin:0 auto; }
+.header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:16px; }
+h1 { margin:0; font-size:1.35rem; }
+.subtitle { margin-top:5px; color:var(--dim); font-size:.82rem; }
+.header-actions { display:flex; gap:7px; }
+button { border:0; border-radius:8px; padding:8px 13px; cursor:pointer; font:inherit; font-size:.82rem; font-weight:650; }
+.secondary { background:var(--soft); color:var(--text); }
+.primary { background:#111; color:#fff; }
+.layout { display:grid; grid-template-columns:210px minmax(0,1fr); gap:14px; min-height:510px; }
+.panel { border:1px solid var(--line); border-radius:13px; background:var(--panel); box-shadow:0 5px 22px rgba(0,0,0,.05); }
+.sidebar { padding:12px; }
+.search { width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:8px; outline:none; font:inherit; font-size:.84rem; background:var(--panel); color:var(--text); }
+.search:focus { border-color:var(--accent); }
+.class-count { padding:10px 3px 7px; color:var(--dim); font-size:.73rem; }
+.class-list { display:flex; flex-direction:column; gap:5px; max-height:450px; overflow:auto; }
+.class-item { width:100%; padding:10px; text-align:left; background:transparent; color:var(--text); }
+.class-item:hover { background:var(--soft); }
+.class-item.active { background:#eaf0ff; color:#174fbf; }
+.class-name { display:block; font-size:.9rem; }
+.class-meta { display:block; margin-top:3px; overflow:hidden; color:var(--dim); font-size:.7rem; font-weight:400; text-overflow:ellipsis; white-space:nowrap; }
+.content { padding:18px; min-width:0; }
+.content-title { margin:0 0 4px; font-size:1.1rem; }
+.content-desc { color:var(--dim); font-size:.78rem; margin-bottom:15px; }
+.records { display:flex; flex-direction:column; gap:13px; }
+.record { padding:15px; border:1px solid var(--line); border-radius:11px; background:var(--panel); }
+.record-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+.record-badge { color:var(--accent); font-size:.72rem; font-weight:750; }
+.record-meta { color:var(--dim); font-size:.73rem; text-align:right; }
+.record-note { margin-top:10px; padding:10px 12px; border-radius:8px; background:var(--soft); font-size:.86rem; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; }
+.record-image { display:block; width:100%; max-height:330px; margin-top:11px; border:1px solid var(--line); border-radius:8px; object-fit:contain; object-position:top; background:var(--soft); cursor:zoom-in; }
+.record-image.expanded { max-height:none; cursor:zoom-out; }
+.empty { display:flex; min-height:410px; align-items:center; justify-content:center; color:var(--dim); font-size:.88rem; text-align:center; line-height:1.6; }
+@media (max-width:650px) {
+    body { padding:14px; }
+    .layout { grid-template-columns:1fr; }
+    .class-list { max-height:150px; }
+    .content { padding:14px; }
+}
+@media (prefers-color-scheme:dark) {
+    :root { --bg:#202020; --panel:#292929; --line:#3b3b3b; --text:#f5f5f5; --dim:#aaa; --soft:#363636; }
+    .class-item.active { background:#263a62; color:#8db5ff; }
+    .primary { background:#fff; color:#111; }
+}
+</style>
+</head>
+<body>
+<div class="shell">
+    <header class="header">
+        <div>
+            <h1>📚 진도 기록</h1>
+            <div class="subtitle">반별 최근 3회의 메모와 저장 화면을 확인할 수 있어요.</div>
+        </div>
+        <div class="header-actions">
+            <button class="secondary" onclick="loadClasses(selectedClass)">새로고침</button>
+            <button class="primary" onclick="closeWindow()">닫기</button>
+        </div>
+    </header>
+    <main class="layout">
+        <aside class="panel sidebar">
+            <input class="search" id="searchInput" type="search" placeholder="반 검색" oninput="renderClassList()">
+            <div class="class-count" id="classCount">불러오는 중...</div>
+            <div class="class-list" id="classList"></div>
+        </aside>
+        <section class="panel content" id="content">
+            <div class="empty">진도 기록을 불러오고 있어요.</div>
+        </section>
+    </main>
+</div>
+<script>
+let classSummaries = [];
+let selectedClass = '';
+
+function makeElement(tag, className='', text='') {
+    const element = document.createElement(tag);
+    if (className) element.className = className;
+    if (text) element.textContent = text;
+    return element;
+}
+
+function renderClassList() {
+    const query = document.getElementById('searchInput').value.trim().toLowerCase();
+    const filtered = classSummaries.filter(item => item.class_name.toLowerCase().includes(query));
+    document.getElementById('classCount').textContent = `저장된 반 ${classSummaries.length}개`;
+    const list = document.getElementById('classList');
+    list.innerHTML = '';
+    filtered.forEach(item => {
+        const button = makeElement('button', 'class-item' + (item.class_name === selectedClass ? ' active' : ''));
+        const name = makeElement('span', 'class-name', item.class_name);
+        const metaParts = [item.saved_at_label, `${item.count}회`].filter(Boolean);
+        const meta = makeElement('span', 'class-meta', metaParts.join(' · '));
+        button.append(name, meta);
+        button.onclick = () => selectClass(item.class_name);
+        list.appendChild(button);
+    });
+}
+
+async function loadClasses(preferredClass='') {
+    const summaries = await window.pywebview.api.get_all_lesson_progress();
+    classSummaries = Array.isArray(summaries) ? summaries : [];
+    const preferredExists = classSummaries.some(item => item.class_name === preferredClass);
+    selectedClass = preferredExists ? preferredClass : (classSummaries[0]?.class_name || '');
+    renderClassList();
+    if (selectedClass) await selectClass(selectedClass);
+    else renderEmpty('아직 저장된 진도가 없어요.\n수업 종료 후 저장하면 여기에 표시됩니다.');
+}
+
+async function selectClass(className) {
+    selectedClass = className;
+    renderClassList();
+    const content = document.getElementById('content');
+    content.innerHTML = '<div class="empty">기록을 불러오고 있어요.</div>';
+    const records = await window.pywebview.api.get_lesson_progress_history(className, true);
+    if (selectedClass !== className) return;
+    renderRecords(className, Array.isArray(records) ? records : []);
+}
+
+function renderRecords(className, records) {
+    const content = document.getElementById('content');
+    content.innerHTML = '';
+    content.appendChild(makeElement('h2', 'content-title', className));
+    content.appendChild(makeElement('div', 'content-desc', `최근 기록 ${records.length}개 · 최신순`));
+    if (!records.length) {
+        content.appendChild(makeElement('div', 'empty', '이 반의 저장된 진도가 없어요.'));
+        return;
+    }
+    const list = makeElement('div', 'records');
+    records.forEach((record, index) => {
+        const card = makeElement('article', 'record');
+        const head = makeElement('div', 'record-head');
+        const badge = makeElement('div', 'record-badge', index === 0 ? '최근 기록' : `${index}회 전 기록`);
+        const meta = makeElement('div', 'record-meta', [record.saved_at_label, record.subject].filter(Boolean).join(' · '));
+        head.append(badge, meta);
+        card.appendChild(head);
+        card.appendChild(makeElement('div', 'record-note', record.note || '메모 없이 저장했어요.'));
+        if (record.image_data_url) {
+            const image = makeElement('img', 'record-image');
+            image.src = record.image_data_url;
+            image.alt = `${className} 저장 화면`;
+            image.title = '클릭해서 크게 보기';
+            image.onclick = () => image.classList.toggle('expanded');
+            card.appendChild(image);
+        }
+        list.appendChild(card);
+    });
+    content.appendChild(list);
+}
+
+function renderEmpty(message) {
+    const content = document.getElementById('content');
+    content.innerHTML = '';
+    const empty = makeElement('div', 'empty', message);
+    empty.style.whiteSpace = 'pre-line';
+    content.appendChild(empty);
+}
+
+function closeWindow() {
+    window.pywebview.api.close_progress_history();
+}
+
+window.addEventListener('pywebviewready', () => loadClasses());
+</script>
+</body>
+</html>

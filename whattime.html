@@ -186,10 +186,17 @@ body.mini .lesson-actions {
     grid-column: 2; grid-row: 3; align-self: center; justify-self: end;
 }
 body.mini .lesson-actions.show { display:flex; }
+body.mini .lesson-action-center { display:flex; align-items:center; gap:7px; }
+body.mini .lesson-history-btn { position:static; }
 body.mini .lesson-end-btn { padding:6px 10px; font-size:.74rem; }
+body.mini .lesson-history-btn { width:28px; padding:6px 0; font-size:.74rem; }
 .lesson-actions { display:none; gap:7px; justify-content:center; }
 .lesson-actions.show { display:flex; }
-.lesson-end-btn { border:0; border-radius:8px; padding:7px 12px; cursor:pointer; font:inherit; font-size:.78rem; font-weight:700; background:var(--active-bg); color:var(--active-text); white-space:nowrap; }
+.lesson-action-center { position:relative; }
+.lesson-end-btn, .lesson-history-btn { border:0; border-radius:8px; padding:7px 12px; cursor:pointer; font:inherit; font-size:.78rem; font-weight:700; white-space:nowrap; }
+.lesson-end-btn { background:var(--active-bg); color:var(--active-text); }
+.lesson-history-btn { position:absolute; left:calc(100% + 7px); top:0; width:30px; padding:7px 0; background:var(--inactive-bg); color:var(--card-fg); }
+.lesson-history-btn:disabled { opacity:.38; cursor:default; }
 .progress-card { display:none; text-align:left; padding:10px 12px; border-radius:9px; background:var(--inactive-bg); color:var(--card-fg); font-size:.78rem; line-height:1.4; }
 .progress-card.show { display:block; }
 .progress-card-title { font-weight:700; margin-bottom:3px; }
@@ -309,7 +316,11 @@ body.mini .lesson-end-btn { padding:6px 10px; font-size:.74rem; }
         <div class="next-timer" id="nextTimer"></div>
     </div>
     <div class="lesson-actions" id="lessonActions">
-        <button class="lesson-end-btn" id="lessonEndBtn" onclick="openLessonEndModal()">수업 종료 · 진도 저장</button>
+        <div class="lesson-action-center">
+            <button class="lesson-end-btn" id="lessonEndBtn" onclick="openLessonEndModal()">수업 종료</button>
+            <button class="lesson-history-btn" id="lessonHistoryBtn" title="이 반의 최근 진도 다시 보기"
+                aria-label="최근 진도 다시 보기" onclick="reopenLessonHistory()" disabled>↺</button>
+        </div>
     </div>
     <div class="timetable-container" id="timetable"></div>
     <div class="mini-timer" id="miniTimer"></div>
@@ -357,6 +368,8 @@ let observedLesson = null;
 let lessonBeingEdited = null;
 let progressLoadedLessonId = null;
 let isProgressPopupOpen = false;
+const manuallyFinishingLessonIds = new Set();
+let lessonModalLoadToken = 0;
 
 function formatCountdown(leftMs, prefix, alwaysMs = false) {
     if (alwaysMs && leftMs > 0) {
@@ -567,9 +580,12 @@ function toggleMiniMode() {
 function updateLessonEndButtonLabel() {
     const button = document.getElementById('lessonEndBtn');
     if (!button) return;
-    button.textContent = isMiniMode
-        ? '수업 종료'
-        : (previewOffset === null ? '수업 종료 · 진도 저장' : '수업 종료 · 기능 미리보기');
+    button.textContent = '수업 종료';
+}
+
+function setLessonHistoryAvailable(available) {
+    const button = document.getElementById('lessonHistoryBtn');
+    if (button) button.disabled = !available;
 }
 
 function lessonId(now, index, personal) {
@@ -577,20 +593,61 @@ function lessonId(now, index, personal) {
     return `${y}-${m}-${d}:${now.getDay()}:${index}:${personal.room || ''}`;
 }
 
-function openLessonEndModal() {
+async function openLessonEndModal() {
     if (!activeLesson) return;
-    lessonBeingEdited = activeLesson;
-    document.getElementById('lessonModalTitle').textContent = previewOffset === null
-        ? `${activeLesson.className} 수업 진도 저장`
-        : `${activeLesson.className} 진도 저장 미리보기`;
-    document.getElementById('lessonNote').value = '';
+    const lesson = activeLesson;
+    const loadToken = ++lessonModalLoadToken;
+    lessonBeingEdited = lesson;
+    let note = '';
+    let isExisting = false;
+    try {
+        const record = previewOffset === null
+            ? await window.pywebview.api.get_lesson_progress(lesson.className, false)
+            : null;
+        if (loadToken !== lessonModalLoadToken || lessonBeingEdited?.id !== lesson.id) return;
+        if (record?.lesson_id === lesson.id) {
+            note = record.note || '';
+            isExisting = true;
+        }
+    } catch (e) {}
+
+    const payload = {
+        title: previewOffset !== null
+            ? `${lesson.className} 진도 저장 미리보기`
+            : (isExisting ? `${lesson.className} 저장된 진도 수정` : `${lesson.className} 수업 진도 저장`),
+        description: previewOffset !== null
+            ? '미리보기 기록은 실제로 저장되지 않아요.'
+            : '다음 같은 반 수업 때 이 기록을 보여드려요.',
+        note,
+        capture: true,
+    };
+    try {
+        if (await window.pywebview.api.open_lesson_end_dialog(payload)) return;
+    } catch (e) {}
+
+    // 독립 창을 열지 못한 환경에서는 기존 내장 창을 안전장치로 사용한다.
+    document.getElementById('lessonModalTitle').textContent = payload.title;
+    document.getElementById('lessonNote').value = note;
     document.getElementById('lessonCapture').checked = true;
     document.getElementById('lessonModal').classList.add('show');
     window.pywebview.api.set_lesson_dialog_open(true, isMiniMode);
     document.getElementById('lessonNote').focus();
 }
 
+function completeLessonEndDialog(payload) {
+    payload = payload || {};
+    document.getElementById('lessonNote').value = payload.note || '';
+    document.getElementById('lessonCapture').checked = payload.capture !== false;
+    saveCurrentLesson(false, true);
+}
+
+function cancelLessonEndDialog() {
+    lessonModalLoadToken++;
+    lessonBeingEdited = null;
+}
+
 function closeLessonEndModal() {
+    lessonModalLoadToken++;
     lessonBeingEdited = null;
     document.getElementById('lessonModal').classList.remove('show');
     window.pywebview.api.set_lesson_dialog_open(false, isMiniMode);
@@ -604,16 +661,94 @@ async function saveLesson(lesson, note, capture, automatic) {
     return result;
 }
 
-async function saveCurrentLesson(automatic=false) {
+function progressHistoryEntry(lesson, record, index, newestIndex, currentIndex) {
+    const isCurrentLesson = record.lesson_id === lesson.id;
+    let label = '지난 수업';
+    if (isCurrentLesson) label = '이번 수업';
+    else if (currentIndex >= 0) {
+        const distance = currentIndex - index;
+        label = distance === 1 ? '지난 수업' : `${distance}회 전`;
+    } else {
+        const distance = newestIndex - index;
+        label = distance === 0 ? '지난 수업' : `${distance + 1}회 전`;
+    }
+    return {
+        eyebrow: isCurrentLesson ? 'THIS CLASS' : 'PREVIOUS CLASS',
+        title: `${lesson.className} · ${isCurrentLesson ? '이번 수업 저장' : '지난 수업 진도'}`,
+        meta: [record.saved_at_label, record.subject].filter(Boolean).join(' · '),
+        note: record.note || '메모 없이 저장했어요.',
+        image_data_url: record.image_data_url || '',
+        nav_label: label,
+        lesson_id: record.lesson_id || '',
+    };
+}
+
+async function openLessonHistory(lesson, focusLessonId='') {
+    if (!lesson) return false;
+    const newestFirst = await window.pywebview.api.get_lesson_progress_history(lesson.className, true);
+    const records = Array.isArray(newestFirst) ? newestFirst : [];
+    setLessonHistoryAvailable(records.length > 0);
+    if (!records.length) return false;
+    const chronological = records.slice().reverse();
+    const currentIndex = chronological.findIndex(record => record.lesson_id === lesson.id);
+    const entries = chronological.map((record, index, all) =>
+        progressHistoryEntry(lesson, record, index, all.length - 1, currentIndex));
+    let initialIndex = entries.length - 1;
+    if (focusLessonId) {
+        const focused = entries.findIndex(entry => entry.lesson_id === focusLessonId);
+        if (focused >= 0) initialIndex = focused;
+    }
+    openProgressWindow({ records: entries, initial_index: initialIndex });
+    return true;
+}
+
+async function reopenLessonHistory() {
+    try { await openLessonHistory(activeLesson || observedLesson); } catch (e) {}
+}
+
+async function showSavedLessonResult(lesson, result) {
+    if (!result || result.duplicate) return;
+    setLessonHistoryAvailable(true);
+    try {
+        if (await openLessonHistory(lesson, lesson.id)) return;
+    } catch (e) {}
+    const record = result.record || {};
+    openProgressWindow({
+        eyebrow: 'SAVED',
+        title: `${lesson.className} · 진도 저장 완료`,
+        meta: [record.saved_at_label, record.subject].filter(Boolean).join(' · '),
+        note: record.note || '메모 없이 저장했어요.',
+        image_data_url: record.image_data_url || '',
+    });
+}
+
+async function runLessonEndActions(lesson, result) {
+    if (!result || result.duplicate) return;
+    await showSavedLessonResult(lesson, result);
+    if (scheduleData?.quit_powerpoint_on_lesson_end === true) {
+        try { await window.pywebview.api.quit_powerpoint(); } catch (e) {}
+    }
+}
+
+async function saveCurrentLesson(automatic=false, independentDialogClosed=false) {
     const lesson = lessonBeingEdited || activeLesson || observedLesson;
     if (!lesson) return;
     const btn = document.getElementById('lessonSaveBtn');
+    const claimsManualFinish = !automatic && previewOffset === null;
+    let saveCompleted = false;
+    if (claimsManualFinish) manuallyFinishingLessonIds.add(lesson.id);
     if (!automatic) { btn.disabled = true; btn.textContent = '저장 중'; }
     try {
         const note = automatic ? '' : document.getElementById('lessonNote').value;
         const capture = automatic ? !!scheduleData.progress_auto_capture : document.getElementById('lessonCapture').checked;
         if (!automatic) {
-            closeLessonEndModal();
+            if (independentDialogClosed) {
+                lessonModalLoadToken++;
+                lessonBeingEdited = null;
+                document.getElementById('lessonModal').classList.remove('show');
+            } else {
+                closeLessonEndModal();
+            }
             await new Promise(resolve => setTimeout(resolve, 150));
         }
         if (!automatic && previewOffset !== null) {
@@ -629,10 +764,13 @@ async function saveCurrentLesson(automatic=false) {
             return;
         }
         const result = await saveLesson(lesson, note, capture, automatic);
+        saveCompleted = true;
+        await runLessonEndActions(lesson, result);
         if (result.capture_error) alert(`진도는 저장했지만 화면 캡처는 실패했습니다.\n${result.capture_error}`);
     } catch (e) {
         if (!automatic) alert(e.message || '진도를 저장하지 못했습니다.');
     } finally {
+        if (claimsManualFinish && !saveCompleted) manuallyFinishingLessonIds.delete(lesson.id);
         if (!automatic) { btn.disabled = false; btn.textContent = '저장'; }
     }
 }
@@ -660,15 +798,21 @@ function dismissPreviousProgress() {
 
 async function autoFinishLesson(lesson) {
     if (scheduleData.progress_auto_save === false || !scheduleData.progress_auto_capture) return;
+    if (manuallyFinishingLessonIds.has(lesson.id)) return;
     if (lessonBeingEdited && lessonBeingEdited.id === lesson.id) return;
-    try { await saveLesson(lesson, '', !!scheduleData.progress_auto_capture, true); } catch (e) {}
+    try {
+        const result = await saveLesson(lesson, '', !!scheduleData.progress_auto_capture, true);
+        await runLessonEndActions(lesson, result);
+    } catch (e) {}
 }
 
 async function showPreviousProgress(lesson, previewDemo=false) {
     if (!lesson || progressLoadedLessonId === lesson.id) return;
     progressLoadedLessonId = lesson.id;
+    setLessonHistoryAvailable(false);
     try {
         const record = await window.pywebview.api.get_lesson_progress(lesson.className, true);
+        setLessonHistoryAvailable(!!record);
         if ((!record || record.lesson_id === lesson.id) && previewDemo) {
             if (!activeLesson || activeLesson.id !== lesson.id) return;
             openProgressWindow({
@@ -999,6 +1143,7 @@ function render() {
         document.getElementById('lessonActions').classList.toggle('show', !!currentLesson);
         if (!currentLesson) {
             progressLoadedLessonId = null;
+            setLessonHistoryAvailable(false);
             dismissPreviousProgress();
         }
     } else {
@@ -1008,6 +1153,7 @@ function render() {
         if (currentLesson) showPreviousProgress(currentLesson, true);
         else {
             progressLoadedLessonId = null;
+            setLessonHistoryAvailable(false);
             dismissPreviousProgress();
         }
     }

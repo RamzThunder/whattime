@@ -11,7 +11,7 @@ import subprocess
 import tempfile
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '2.2.1'
+APP_VERSION = '2.2.2'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -50,6 +50,8 @@ PROGRESS_LOCK      = threading.RLock()
 MAIN_HTML          = os.path.join(base_dir, 'whattime.html')
 SETTINGS_HTML      = os.path.join(base_dir, 'settings.html')
 PROGRESS_HTML      = os.path.join(base_dir, 'progress_popup.html')
+PROGRESS_HISTORY_HTML = os.path.join(base_dir, 'progress_history.html')
+LESSON_END_HTML    = os.path.join(base_dir, 'lesson_end.html')
 
 WEBVIEW_STORAGE_PATH = None
 if not IS_MAC:
@@ -175,7 +177,8 @@ DEFAULT_SCHEDULE = {
     "bell_alert_color": "#ff3b30",
     "custom_colors_bell_alert": [],
     "progress_auto_save": True,
-    "progress_auto_capture": True
+    "progress_auto_capture": True,
+    "quit_powerpoint_on_lesson_end": False
 }
 
 def _version_tuple(v):
@@ -539,6 +542,16 @@ def _load_progress():
             pass
     return {'classes': {}}
 
+def _progress_records(value):
+    """Accept both the legacy single-record shape and the recent-history shape."""
+    if isinstance(value, list):
+        return [record for record in value if isinstance(record, dict)]
+    if isinstance(value, dict) and isinstance(value.get('records'), list):
+        return [record for record in value['records'] if isinstance(record, dict)]
+    if isinstance(value, dict) and value:
+        return [value]
+    return []
+
 def _save_progress(data):
     temp_path = PROGRESS_PATH + '.tmp'
     with open(temp_path, 'w', encoding='utf-8') as f:
@@ -590,6 +603,10 @@ class Api:
     def __init__(self):
         self.settings_window = None
         self.progress_window = None
+        self.progress_history_window = None
+        self.lesson_end_window = None
+        self._lesson_end_payload = None
+        self._lesson_end_submitting = False
         self._progress_popup_payload = None
         self._pinned = False
         self._font_cache = None
@@ -691,6 +708,109 @@ class Api:
             except Exception:
                 pass
             self.progress_window = None
+        return True
+
+    def open_progress_history(self):
+        if self.progress_history_window is not None:
+            if self.progress_history_window in webview.windows:
+                try:
+                    self.progress_history_window.on_top = True
+                except Exception:
+                    pass
+                return True
+            self.progress_history_window = None
+
+        self.progress_history_window = webview.create_window(
+            title='진도 기록',
+            url=PROGRESS_HISTORY_HTML,
+            width=760,
+            height=650,
+            min_size=(560, 420),
+            resizable=True,
+            js_api=self,
+        )
+
+        def on_closed():
+            self.progress_history_window = None
+        self.progress_history_window.events.closed += on_closed
+        return True
+
+    def close_progress_history(self):
+        if self.progress_history_window:
+            try:
+                self.progress_history_window.destroy()
+            except Exception:
+                pass
+            self.progress_history_window = None
+        return True
+
+    def open_lesson_end_dialog(self, payload):
+        if not isinstance(payload, dict):
+            return False
+        self._lesson_end_payload = payload
+        if self.lesson_end_window is not None:
+            if self.lesson_end_window in webview.windows:
+                encoded = json.dumps(payload, ensure_ascii=False)
+                try:
+                    self.lesson_end_window.evaluate_js(f'renderLessonEnd({encoded})')
+                    self.lesson_end_window.on_top = True
+                except Exception:
+                    pass
+                return True
+            self.lesson_end_window = None
+
+        self._lesson_end_submitting = False
+        self.lesson_end_window = webview.create_window(
+            title='수업 종료',
+            url=LESSON_END_HTML,
+            width=430,
+            height=340,
+            min_size=(360, 300),
+            resizable=True,
+            on_top=True,
+            js_api=self,
+        )
+
+        def on_closed():
+            was_submitting = self._lesson_end_submitting
+            self.lesson_end_window = None
+            self._lesson_end_submitting = False
+            if not was_submitting:
+                threading.Timer(0, lambda: main_window.evaluate_js('cancelLessonEndDialog()')).start()
+        self.lesson_end_window.events.closed += on_closed
+        return True
+
+    def get_lesson_end_dialog_data(self):
+        return self._lesson_end_payload or {}
+
+    def submit_lesson_end_dialog(self, note='', capture=True):
+        payload = {
+            'note': str(note or '')[:2000],
+            'capture': bool(capture),
+        }
+        self._lesson_end_submitting = True
+
+        def close_and_submit():
+            window = self.lesson_end_window
+            if window:
+                try:
+                    window.destroy()
+                except Exception:
+                    pass
+            encoded = json.dumps(payload, ensure_ascii=False)
+            threading.Timer(
+                0.2,
+                lambda: main_window.evaluate_js(f'completeLessonEndDialog({encoded})'),
+            ).start()
+        threading.Timer(0, close_and_submit).start()
+        return True
+
+    def close_lesson_end_dialog(self):
+        if self.lesson_end_window:
+            try:
+                self.lesson_end_window.destroy()
+            except Exception:
+                pass
         return True
 
     def get_startup_enabled(self):
@@ -862,8 +982,38 @@ class Api:
         if not class_name:
             return None
         with PROGRESS_LOCK:
-            record = _load_progress().get('classes', {}).get(class_name)
+            records = _progress_records(_load_progress().get('classes', {}).get(class_name))
+            record = records[0] if records else None
             return _progress_public_record(record, bool(include_image)) if record else None
+
+    def get_lesson_progress_history(self, class_name, include_images=True):
+        class_name = str(class_name or '').strip()
+        if not class_name:
+            return []
+        with PROGRESS_LOCK:
+            records = _progress_records(_load_progress().get('classes', {}).get(class_name))[:3]
+            return [_progress_public_record(record, bool(include_images)) for record in records]
+
+    def get_all_lesson_progress(self):
+        with PROGRESS_LOCK:
+            classes = _load_progress().get('classes', {})
+            result = []
+            for class_name, value in classes.items():
+                records = _progress_records(value)[:3]
+                if not records:
+                    continue
+                latest = records[0]
+                result.append({
+                    'class_name': str(class_name),
+                    'count': len(records),
+                    'subject': latest.get('subject', ''),
+                    'note': latest.get('note', ''),
+                    'saved_at': latest.get('saved_at', ''),
+                    'saved_at_label': latest.get('saved_at_label', ''),
+                    'has_image': bool(latest.get('image_path') and os.path.exists(latest['image_path'])),
+                })
+            result.sort(key=lambda item: item.get('saved_at', ''), reverse=True)
+            return result
 
     def save_lesson_progress(self, class_name, subject='', note='', capture=False,
                              lesson_id='', automatic=False):
@@ -877,7 +1027,8 @@ class Api:
         with PROGRESS_LOCK:
             data = _load_progress()
             classes = data.setdefault('classes', {})
-            previous = classes.get(class_name) or {}
+            history = _progress_records(classes.get(class_name))
+            previous = history[0] if history else {}
             if automatic and lesson_id and previous.get('lesson_id') == lesson_id:
                 return {'ok': True, 'duplicate': True, 'record': _progress_public_record(previous)}
 
@@ -902,18 +1053,45 @@ class Api:
                 except Exception as e:
                     capture_error = str(e)
 
-            classes[class_name] = record
+            same_lesson = bool(lesson_id) and previous.get('lesson_id') == lesson_id
+            discarded = [previous] if same_lesson and previous else []
+            updated_history = [record] + (history[1:] if same_lesson else history)
+            discarded.extend(updated_history[3:])
+            updated_history = updated_history[:3]
+            classes[class_name] = updated_history
             _save_progress(data)
-            old_image = previous.get('image_path')
-            if old_image and old_image != record.get('image_path') and os.path.exists(old_image):
-                try:
-                    os.remove(old_image)
-                except OSError:
-                    pass
-            result = {'ok': True, 'record': _progress_public_record(record)}
+            retained_images = {item.get('image_path') for item in updated_history if item.get('image_path')}
+            for old_record in discarded:
+                old_image = old_record.get('image_path')
+                if old_image and old_image not in retained_images and os.path.exists(old_image):
+                    try:
+                        os.remove(old_image)
+                    except OSError:
+                        pass
+            # The completion popup needs the exact screenshot that was just saved.
+            result = {'ok': True, 'record': _progress_public_record(record, bool(capture))}
             if capture_error:
                 result['capture_error'] = capture_error
             return result
+
+    def quit_powerpoint(self):
+        """Ask PowerPoint to quit normally so it can prompt for unsaved files."""
+        if not IS_MAC:
+            return {'ok': False, 'unsupported': True}
+        script = (
+            'if application "Microsoft PowerPoint" is running then\n'
+            'tell application "Microsoft PowerPoint" to quit\n'
+            'end if'
+        )
+        try:
+            subprocess.Popen(
+                ['osascript', '-e', script],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            return {'ok': True}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
 
     def capture_lesson_preview(self):
         """Capture a disposable image for the settings preview without saving a record."""
