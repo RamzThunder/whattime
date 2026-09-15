@@ -11,7 +11,7 @@ import subprocess
 import tempfile
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '2.2.0'
+APP_VERSION = '2.2.1'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -141,7 +141,8 @@ DEFAULT_SCHEDULE = {
         {"name": "수업 끝^-^",         "start": "15:30", "end": "16:20"}
     ],
     "special": [],
-    "special_schedule_enabled": True,
+    "special_schedule_enabled": False,
+    "special_schedule_opt_in_version": 1,
     "seven_period_days": [1, 2, 4],
     "special_dates": [],
     "rest_days": [0, 6],
@@ -487,11 +488,38 @@ def _check_update_result():
     except Exception as e:
         return {'has_update': False, 'current': APP_VERSION, 'error': str(e)}
 
+def migrate_schedule(data):
+    """Upgrade persisted schedules without treating the 2.1.x short timetable as special."""
+    if not isinstance(data, dict):
+        return copy.deepcopy(DEFAULT_SCHEDULE)
+
+    migrated = copy.deepcopy(data)
+    if not isinstance(migrated.get('seven_period_days'), list):
+        legacy_short_days = migrated.get('six_period_days')
+        if not isinstance(legacy_short_days, list):
+            legacy_short_days = migrated.get('short_days')
+        if not isinstance(legacy_short_days, list):
+            legacy_short_days = [3, 5]
+        short_days = {
+            day for day in legacy_short_days
+            if isinstance(day, int) and 1 <= day <= 5
+        }
+        migrated['seven_period_days'] = [day for day in range(1, 6) if day not in short_days]
+
+    # In 2.1.x, `short` meant the ordinary six-period day. It must never
+    # become the 2.2.x date-specific exceptional schedule.
+    if not isinstance(migrated.get('special'), list):
+        migrated['special'] = []
+    if migrated.get('special_schedule_opt_in_version') != 1:
+        migrated['special_schedule_enabled'] = False
+        migrated['special_schedule_opt_in_version'] = 1
+    return migrated
+
 def load_schedule():
     if os.path.exists(SCHEDULE_PATH):
         try:
             with open(SCHEDULE_PATH, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                return migrate_schedule(json.load(f))
         except:
             pass
     return copy.deepcopy(DEFAULT_SCHEDULE)

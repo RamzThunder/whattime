@@ -780,7 +780,7 @@ body.settings-loading::before {
             <div class="startup-desc">지정한 날짜에 단축·행사 시정을 적용해요</div>
         </div>
         <div class="toggle-wrap">
-            <input type="checkbox" class="toggle-input" id="specialScheduleToggle" onchange="data.special_schedule_enabled=this.checked">
+            <input type="checkbox" class="toggle-input" id="specialScheduleToggle" onchange="onSpecialScheduleToggle(this.checked)">
             <label class="toggle-label" for="specialScheduleToggle"></label>
         </div>
     </div>
@@ -1330,8 +1330,9 @@ async function init() {
     document.getElementById('bellAlertColorSection').style.display = bellEnabled ? 'block' : 'none';
     document.getElementById('progressAutoSaveToggle').checked = data.progress_auto_save !== false;
     document.getElementById('progressAutoCaptureToggle').checked = !!data.progress_auto_capture;
-    document.getElementById('specialScheduleToggle').checked = data.special_schedule_enabled !== false;
+    document.getElementById('specialScheduleToggle').checked = data.special_schedule_enabled === true;
     updateLabDependencies();
+    updateSpecialScheduleAvailability();
 
     const scale = data.font_scale || 1.0;
     document.getElementById('fontSizeDisplay').textContent = Math.round(scale * 100) + '%';
@@ -1405,6 +1406,18 @@ function onProgressAutoSaveToggle(checked) {
 function updateLabDependencies() {
     const enabled = document.getElementById('progressAutoSaveToggle').checked;
     document.getElementById('progressAutoCaptureToggle').disabled = !enabled;
+}
+
+function onSpecialScheduleToggle(checked) {
+    data.special_schedule_enabled = checked;
+    updateSpecialScheduleAvailability();
+}
+
+function updateSpecialScheduleAvailability() {
+    const enabled = data.special_schedule_enabled === true;
+    const tabButton = document.querySelector('.tab-btn[data-tab="special"]');
+    if (tabButton) tabButton.style.display = enabled ? '' : 'none';
+    if (!enabled && currentTab === 'special') switchTab('full');
 }
 
 function onTopBarStyleChange(checked) {
