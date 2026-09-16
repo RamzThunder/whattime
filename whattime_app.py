@@ -12,7 +12,7 @@ import subprocess
 import tempfile
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '2.2.3'
+APP_VERSION = '2.2.4'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -718,13 +718,24 @@ class Api:
 
         self._settings_opening = True
         try:
+            settings_source = {'url': SETTINGS_HTML}
+            if not IS_MAC:
+                try:
+                    # WebView2 can retain an older file:// response in its
+                    # persistent profile after an in-place update. Loading the
+                    # small bundled document directly avoids that cache path.
+                    with open(SETTINGS_HTML, 'r', encoding='utf-8') as f:
+                        settings_source = {'html': f.read()}
+                except OSError:
+                    # Keep the existing file URL path as a safe fallback.
+                    pass
             self.settings_window = webview.create_window(
                 title='설정',
-                url=SETTINGS_HTML,
                 width=480,
                 height=720,
                 resizable=True,
                 js_api=self,
+                **settings_source,
             )
         finally:
             self._settings_opening = False
