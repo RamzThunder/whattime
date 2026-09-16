@@ -178,6 +178,26 @@ h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; }
     font-family: inherit; color: #1a1a1a; transition: border-color 0.15s;
 }
 .text-row input:focus { outline: none; border-color: #000; }
+
+.special-library-header {
+    display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:9px;
+}
+.special-library-actions { display:flex; gap:6px; flex-shrink:0; }
+.special-schedule-cards { display:flex; flex-direction:column; gap:7px; }
+.special-schedule-card {
+    width:100%; padding:10px 11px; border:1.5px solid #e7e7e3; border-radius:9px;
+    background:#fff; color:#222; cursor:pointer; text-align:left; font:inherit;
+}
+.special-schedule-card:hover { border-color:#aaa; }
+.special-schedule-card.selected { border-color:#000; background:#f7f7f5; }
+.special-schedule-card-title { display:block; font-size:.86rem; font-weight:650; }
+.special-schedule-card-meta { display:block; margin-top:3px; color:#999; font-size:.73rem; font-weight:400; }
+.special-editor-header { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+.special-name-input {
+    flex:1; min-width:0; padding:7px 9px; border:1.5px solid #ddd; border-radius:7px;
+    font:inherit; font-size:.86rem;
+}
+.special-source { color:#999; font-size:.74rem; margin-bottom:11px; overflow-wrap:anywhere; }
 .number-input {
     appearance: textfield;
     -moz-appearance: textfield;
@@ -506,7 +526,7 @@ body.settings-loading::before {
 
     <div class="tabs">
         <button class="tab-btn active" data-tab="full" onclick="switchTab('full')">📅 일반 시정</button>
-        <button class="tab-btn" data-tab="special" onclick="switchTab('special')">⚡ 단축(특별)시정</button>
+        <button class="tab-btn" data-tab="special" onclick="switchTab('special')">⚡ 특별 시정</button>
         <button class="tab-btn" data-tab="personal" onclick="switchTab('personal')">📚 개인 시간표</button>
         <button class="tab-btn" data-tab="rest" onclick="switchTab('rest')">🏖 쉬는 날</button>
     </div>
@@ -526,28 +546,52 @@ body.settings-loading::before {
 
     <div class="tab-panel" id="panel-special">
         <div class="text-section">
-            <div class="text-section-title">HWPX 시정표 불러오기</div>
+            <div class="text-section-title">새 특별 시간표 만들기</div>
             <div class="startup-desc" id="hwpxImportDesc" style="line-height:1.45;margin-bottom:10px;">
-                표에서 교시명과 시작·종료 시각을 찾아 아래 특별 시정에 채워요.
+                HWPX 표에서 교시명과 시각을 읽어 새 시간표로 추가해요.
             </div>
             <button class="data-btn" id="hwpxImportBtn" style="width:100%;"
-                onclick="importHwpxSchedule()">📄 HWPX 파일 선택</button>
+                onclick="importHwpxSchedule()">📄 HWPX에서 새 시간표 추가</button>
         </div>
+
         <div class="theme-section">
-            <div class="theme-section-title">특별 시정 적용 날짜</div>
-            <div class="startup-desc" style="margin-bottom:8px;">추가한 날짜에만 일반 시정보다 우선 적용돼요</div>
-            <div style="display:flex;gap:7px;margin-bottom:10px;">
-                <input type="date" id="specialDateInput" class="preview-select" style="flex:1;">
-                <button class="preview-apply" onclick="addSpecialDate()">날짜 추가</button>
+            <div class="special-library-header">
+                <div>
+                    <div class="theme-section-title" style="margin-bottom:2px;">저장된 특별 시간표</div>
+                    <div class="startup-desc" id="specialScheduleCount">0 / 30개</div>
+                </div>
+                <div class="special-library-actions">
+                    <button class="hex-add-btn" onclick="addBlankSpecialSchedule()">+ 빈 시간표</button>
+                </div>
             </div>
-            <div class="days-row" id="specialDatesRow"></div>
-            <div class="startup-desc" id="specialDatesEmpty">아직 추가한 날짜가 없어요.</div>
+            <div class="special-schedule-cards" id="specialScheduleCards"></div>
+            <div class="startup-desc" id="specialSchedulesEmpty">아직 저장된 특별 시간표가 없어요.</div>
         </div>
-        <div class="col-headers">
-            <span></span><span>교시 이름</span><span style="text-align:center">시작</span><span style="text-align:center">종료</span><span style="text-align:center;font-size:0.7rem">제외</span><span></span>
+
+        <div id="specialScheduleEditor" style="display:none;">
+            <div class="theme-section">
+                <div class="special-editor-header">
+                    <input type="text" class="special-name-input" id="specialScheduleName"
+                        maxlength="80" placeholder="특별 시간표 이름" oninput="renameSelectedSpecialSchedule(this.value)">
+                    <button class="data-btn danger" style="width:auto;padding:7px 11px;"
+                        onclick="deleteSelectedSpecialSchedule()">삭제</button>
+                </div>
+                <div class="special-source" id="specialScheduleSource"></div>
+                <div class="theme-section-title">이 시간표를 적용할 날</div>
+                <div class="startup-desc" style="margin-bottom:8px;">한 날짜에는 하나의 특별 시간표만 적용돼요.</div>
+                <div style="display:flex;gap:7px;margin-bottom:10px;">
+                    <input type="date" id="specialDateInput" class="preview-select" style="flex:1;">
+                    <button class="preview-apply" onclick="addSpecialDate()">날짜 추가</button>
+                </div>
+                <div class="days-row" id="specialDatesRow"></div>
+                <div class="startup-desc" id="specialDatesEmpty">아직 추가한 날짜가 없어요.</div>
+            </div>
+            <div class="col-headers">
+                <span></span><span>교시 이름</span><span style="text-align:center">시작</span><span style="text-align:center">종료</span><span style="text-align:center;font-size:0.7rem">제외</span><span></span>
+            </div>
+            <div class="schedule-list" id="list-special"></div>
+            <button class="add-btn" onclick="addRow('special')">+ 교시 추가</button>
         </div>
-        <div class="schedule-list" id="list-special"></div>
-        <button class="add-btn" onclick="addRow('special')">+ 교시 추가</button>
     </div>
 
     <div class="tab-panel" id="panel-personal">
@@ -779,7 +823,7 @@ body.settings-loading::before {
     <div class="startup-section">
         <div>
             <div class="startup-label">📊 수업 종료 시 PowerPoint 종료</div>
-            <div class="startup-desc" id="powerPointQuitDesc">macOS 전용 · 저장하지 않은 문서는 PowerPoint가 저장 여부를 물어봐요</div>
+            <div class="startup-desc" id="powerPointQuitDesc">macOS 전용 · 종료 전에 확인하고, 저장하지 않은 문서는 PowerPoint가 다시 물어봐요</div>
         </div>
         <div class="toggle-wrap">
             <input type="checkbox" class="toggle-input" id="powerPointQuitToggle"
@@ -1254,9 +1298,10 @@ const DAY_NAMES = ["일","월","화","수","목","금","토"];
 const WEEKDAYS = [1,2,3,4,5];
 const ALL_DAYS_MON_FIRST = [1,2,3,4,5,6,0];
 
-let data = { full: [], special: [], seven_period_days: [1, 2, 4], special_dates: [], rest_days: [0, 6], rest_schedules: {"0":[],"1":[],"2":[],"3":[],"4":[],"5":[],"6":[]} };
+let data = { full: [], special_schedules: [], seven_period_days: [1, 2, 4], rest_days: [0, 6], rest_schedules: {"0":[],"1":[],"2":[],"3":[],"4":[],"5":[],"6":[]} };
 let currentTab = 'full';
 let restDay = "0";
+let selectedSpecialId = '';
 let settingsReady = false;
 
 function markSettingsReady() {
@@ -1284,6 +1329,25 @@ async function init() {
     }
     data.special_dates = [...new Set(data.special_dates.filter(isValidDateKey))].sort();
     if (!Array.isArray(data.special)) data.special = [];
+    if (!Array.isArray(data.special_schedules)) {
+        data.special_schedules = data.special.length ? [{
+            id: 'legacy-special-schedule',
+            name: '기존 특별 시간표',
+            source_file: '',
+            schedule: JSON.parse(JSON.stringify(data.special)),
+            dates: [...data.special_dates],
+        }] : [];
+    }
+    data.special_schedules = data.special_schedules.filter(item => item && typeof item === 'object').slice(0, 30);
+    data.special_schedules.forEach((item, index) => {
+        if (!item.id) item.id = `special-${Date.now().toString(36)}-${index}`;
+        if (!item.name) item.name = `특별 시간표 ${index + 1}`;
+        if (!Array.isArray(item.schedule)) item.schedule = [];
+        if (!Array.isArray(item.dates)) item.dates = [];
+        item.dates = [...new Set(item.dates.filter(isValidDateKey))].sort();
+        if (typeof item.source_file !== 'string') item.source_file = '';
+    });
+    selectedSpecialId = data.special_schedules[0]?.id || '';
     if (!data.personal) data.personal = {"1":[],"2":[],"3":[],"4":[],"5":[]};
     if (!data.rest_days) data.rest_days = [0, 6];
     if (!data.rest_schedules) {
@@ -1299,9 +1363,8 @@ async function init() {
     });
 
     renderList('full');
-    renderList('special');
     renderRegularDayChecks();
-    renderSpecialDates();
+    renderSpecialSchedules();
     renderPersonalDayChips();
     renderPersonalList();
     document.getElementById('comciSchoolNameInput').value = data.comci_school_name || '';
@@ -1506,26 +1569,128 @@ function formatSpecialDate(value) {
     return `${year}.${String(month).padStart(2, '0')}.${String(day).padStart(2, '0')} (${DAY_NAMES[date.getDay()]})`;
 }
 
+function makeSpecialScheduleId() {
+    return `special-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function getSelectedSpecialSchedule() {
+    return (data.special_schedules || []).find(item => item.id === selectedSpecialId) || null;
+}
+
+function selectSpecialSchedule(id) {
+    selectedSpecialId = id;
+    renderSpecialSchedules();
+}
+
+function renderSpecialSchedules() {
+    const profiles = data.special_schedules || [];
+    if (!profiles.some(item => item.id === selectedSpecialId))
+        selectedSpecialId = profiles[0]?.id || '';
+
+    document.getElementById('specialScheduleCount').textContent = `${profiles.length} / 30개`;
+    document.getElementById('specialSchedulesEmpty').style.display = profiles.length ? 'none' : 'block';
+    const cards = document.getElementById('specialScheduleCards');
+    cards.innerHTML = '';
+    profiles.forEach(profile => {
+        const button = document.createElement('button');
+        button.className = 'special-schedule-card' + (profile.id === selectedSpecialId ? ' selected' : '');
+        button.dataset.specialId = profile.id;
+        const title = document.createElement('span');
+        title.className = 'special-schedule-card-title';
+        title.textContent = profile.name || '이름 없는 특별 시간표';
+        const meta = document.createElement('span');
+        meta.className = 'special-schedule-card-meta';
+        const dateCount = (profile.dates || []).length;
+        const scheduleCount = (profile.schedule || []).length;
+        meta.textContent = `${dateCount}개 날짜 · ${scheduleCount}개 일정`;
+        button.append(title, meta);
+        button.onclick = () => selectSpecialSchedule(profile.id);
+        cards.appendChild(button);
+    });
+
+    const selected = getSelectedSpecialSchedule();
+    const editor = document.getElementById('specialScheduleEditor');
+    editor.style.display = selected ? 'block' : 'none';
+    if (!selected) return;
+    document.getElementById('specialScheduleName').value = selected.name || '';
+    document.getElementById('specialScheduleSource').textContent = selected.source_file
+        ? `불러온 파일: ${selected.source_file}`
+        : '직접 입력한 시간표';
+    renderSpecialDates();
+    renderList('special');
+}
+
+function renameSelectedSpecialSchedule(value) {
+    const selected = getSelectedSpecialSchedule();
+    if (!selected) return;
+    selected.name = value;
+    const card = [...document.querySelectorAll('.special-schedule-card')]
+        .find(item => item.dataset.specialId === selected.id);
+    if (card) card.querySelector('.special-schedule-card-title').textContent = value || '이름 없는 특별 시간표';
+}
+
+function addBlankSpecialSchedule() {
+    if ((data.special_schedules || []).length >= 30) {
+        showToast('특별 시간표는 최대 30개까지 저장할 수 있어요');
+        return;
+    }
+    const number = data.special_schedules.length + 1;
+    const profile = {
+        id: makeSpecialScheduleId(),
+        name: `특별 시간표 ${number}`,
+        source_file: '',
+        schedule: [],
+        dates: [],
+    };
+    data.special_schedules.push(profile);
+    selectedSpecialId = profile.id;
+    renderSpecialSchedules();
+    document.getElementById('specialScheduleName').focus();
+}
+
+function deleteSelectedSpecialSchedule() {
+    const selected = getSelectedSpecialSchedule();
+    if (!selected) return;
+    if (!confirm(`“${selected.name || '이름 없는 특별 시간표'}”을 삭제할까요?`)) return;
+    data.special_schedules = data.special_schedules.filter(item => item.id !== selected.id);
+    selectedSpecialId = data.special_schedules[0]?.id || '';
+    renderSpecialSchedules();
+}
+
 function addSpecialDate() {
+    const selected = getSelectedSpecialSchedule();
+    if (!selected) {
+        showToast('먼저 특별 시간표를 추가해 주세요');
+        return;
+    }
     const input = document.getElementById('specialDateInput');
     const value = input.value;
     if (!isValidDateKey(value)) {
         showToast('적용할 날짜를 선택해 주세요');
         return;
     }
-    if (!data.special_dates.includes(value)) data.special_dates.push(value);
-    data.special_dates.sort();
-    renderSpecialDates();
+    const owner = data.special_schedules.find(item =>
+        item.id !== selected.id && (item.dates || []).includes(value));
+    if (owner) {
+        const move = confirm(`${formatSpecialDate(value)}은(는) “${owner.name}”에 적용 중이에요.\n현재 시간표로 옮길까요?`);
+        if (!move) return;
+        owner.dates = owner.dates.filter(date => date !== value);
+    }
+    if (!selected.dates.includes(value)) selected.dates.push(value);
+    selected.dates.sort();
+    renderSpecialSchedules();
 }
 
 function removeSpecialDate(value) {
-    data.special_dates = (data.special_dates || []).filter(date => date !== value);
-    renderSpecialDates();
+    const selected = getSelectedSpecialSchedule();
+    if (!selected) return;
+    selected.dates = (selected.dates || []).filter(date => date !== value);
+    renderSpecialSchedules();
 }
 
 function renderSpecialDates() {
     const row = document.getElementById('specialDatesRow');
-    const dates = data.special_dates || [];
+    const dates = getSelectedSpecialSchedule()?.dates || [];
     row.innerHTML = '';
     dates.forEach(value => {
         const chip = document.createElement('button');
@@ -1617,21 +1782,31 @@ function delRestRow(i) {
     renderRestSchedule();
 }
 
+function getScheduleItems(type) {
+    if (type === 'special') return getSelectedSpecialSchedule()?.schedule || [];
+    return data[type] || [];
+}
+
+function updateScheduleItem(type, index, key, value) {
+    const items = getScheduleItems(type);
+    if (items[index]) items[index][key] = value;
+}
+
 function renderList(type) {
     const list = document.getElementById('list-' + type);
     list.innerHTML = '';
-    data[type].forEach((item, i) => {
+    getScheduleItems(type).forEach((item, i) => {
         const row = document.createElement('div');
         row.className = 'period-row';
         const noCD = !!item.no_countdown;
         row.innerHTML = `
             <span class="drag-handle" draggable="true">⠿</span>
             <input type="text" value="${item.name}" placeholder="교시 이름"
-                oninput="data['${type}'][${i}].name=this.value">
+                oninput="updateScheduleItem('${type}',${i},'name',this.value)">
             <input type="text" class="time-input" value="${item.start}" placeholder="08:00"
-                oninput="data['${type}'][${i}].start=this.value">
+                oninput="updateScheduleItem('${type}',${i},'start',this.value)">
             <input type="text" class="time-input" value="${item.end}" placeholder="09:00"
-                oninput="data['${type}'][${i}].end=this.value">
+                oninput="updateScheduleItem('${type}',${i},'end',this.value)">
             <button class="no-cd-btn${noCD?' excluded':''}"
                 onclick="toggleNoCountdown('${type}', ${i})"
                 title="카운트다운 제외${noCD?' (적용됨)':''}">⊘</button>
@@ -1642,20 +1817,25 @@ function renderList(type) {
 }
 
 function toggleNoCountdown(type, i) {
-    data[type][i].no_countdown = !data[type][i].no_countdown;
+    const items = getScheduleItems(type);
+    items[i].no_countdown = !items[i].no_countdown;
     renderList(type);
 }
 
 function addRow(type) {
-    data[type].push({ name: "", start: "00:00", end: "00:00" });
-    renderList(type);
+    const items = getScheduleItems(type);
+    if (type === 'special' && !getSelectedSpecialSchedule()) return;
+    items.push({ name: "", start: "00:00", end: "00:00" });
+    if (type === 'special') renderSpecialSchedules();
+    else renderList(type);
     const rows = document.querySelectorAll(`#list-${type} .period-row`);
     if (rows.length > 0) rows[rows.length-1].querySelector('input').focus();
 }
 
 function delRow(type, i) {
-    data[type].splice(i, 1);
-    renderList(type);
+    getScheduleItems(type).splice(i, 1);
+    if (type === 'special') renderSpecialSchedules();
+    else renderList(type);
 }
 
 function switchTab(tab) {
@@ -1687,6 +1867,8 @@ async function save() {
     delete data.short_days;
     delete data.six_period_days;
     delete data.special_days;
+    delete data.special;
+    delete data.special_dates;
     await window.pywebview.api.save_schedule(data);
     showToast('저장했어요! ✓');
 }
@@ -1790,27 +1972,40 @@ async function importHwpxSchedule() {
     button.textContent = 'HWPX 읽는 중...';
     desc.textContent = '문서 안의 시정표를 찾고 있어요.';
     try {
+        if ((data.special_schedules || []).length >= 30) {
+            throw new Error('특별 시간표는 최대 30개까지 저장할 수 있어요.');
+        }
         const result = await window.pywebview.api.import_hwpx_schedule();
         if (result.cancelled) {
-            desc.textContent = '표에서 교시명과 시작·종료 시각을 찾아 아래 특별 시정에 채워요.';
+            desc.textContent = 'HWPX 표에서 교시명과 시각을 읽어 새 시간표로 추가해요.';
             return;
         }
         if (!result.ok) throw new Error(result.error || 'HWPX 시정표를 읽지 못했습니다.');
-        data.special = (result.schedule || []).map(item => ({
+        const schedule = (result.schedule || []).map(item => ({
             name: item.name || '',
             start: item.start || '00:00',
-            end: item.end || '00:00'
+            end: item.end || '00:00',
+            no_countdown: !!item.no_countdown,
         }));
-        renderList('special');
-        renderPersonalList();
-        desc.textContent = `${result.filename} · ${data.special.length}개 일정을 불러왔어요. 저장을 눌러 적용하세요.`;
-        showToast('HWPX 특별 시정을 불러왔어요');
+        const filename = result.filename || 'HWPX 특별 시간표';
+        const profile = {
+            id: makeSpecialScheduleId(),
+            name: filename.replace(/\.hwpx$/i, '') || 'HWPX 특별 시간표',
+            source_file: filename,
+            schedule,
+            dates: [],
+        };
+        data.special_schedules.push(profile);
+        selectedSpecialId = profile.id;
+        renderSpecialSchedules();
+        desc.textContent = `${filename} · ${schedule.length}개 일정을 새 시간표로 추가했어요. 적용 날짜를 선택하세요.`;
+        showToast('새 특별 시간표를 추가했어요');
     } catch (e) {
         desc.textContent = e.message || 'HWPX 시정표를 읽지 못했습니다.';
         showToast('HWPX 시정표를 불러오지 못했어요');
     } finally {
         button.disabled = false;
-        button.textContent = '📄 HWPX 파일 선택';
+        button.textContent = '📄 HWPX에서 새 시간표 추가';
     }
 }
 
@@ -1920,7 +2115,7 @@ function initDragDrop() {
         () => data.full,
         () => renderList('full'));
     setupDragDrop('list-special',
-        () => data.special,
+        () => getScheduleItems('special'),
         () => renderList('special'));
     setupDragDrop('list-rest',
         () => data.rest_schedules[restDay],

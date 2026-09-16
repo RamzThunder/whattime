@@ -726,7 +726,7 @@ async function runLessonEndActions(lesson, result) {
     if (!result || result.duplicate) return;
     await showSavedLessonResult(lesson, result);
     if (scheduleData?.quit_powerpoint_on_lesson_end === true) {
-        try { await window.pywebview.api.quit_powerpoint(); } catch (e) {}
+        try { await window.pywebview.api.open_powerpoint_quit_dialog(); } catch (e) {}
     }
 }
 
@@ -867,13 +867,21 @@ function getTodaySchedule(dateOrDay) {
     if (restDays.includes(dayIndex)) {
         return (scheduleData.rest_schedules && scheduleData.rest_schedules[String(dayIndex)]) || [];
     }
-    const specialSchedule = scheduleData.special || [];
-    const specialDates = scheduleData.special_dates;
-    const isSpecialDate = hasDate && Array.isArray(specialDates)
-        ? specialDates.includes(localDateKey(dateOrDay))
-        : (!Array.isArray(specialDates) && (scheduleData.special_days || []).includes(dayIndex));
-    if (scheduleData.special_schedule_enabled === true && isSpecialDate && specialSchedule.length > 0)
-        return specialSchedule;
+    if (scheduleData.special_schedule_enabled === true && hasDate) {
+        const dateKey = localDateKey(dateOrDay);
+        const profiles = Array.isArray(scheduleData.special_schedules)
+            ? scheduleData.special_schedules : [];
+        const profile = profiles.find(item =>
+            item && Array.isArray(item.dates) && item.dates.includes(dateKey));
+        if (profile && Array.isArray(profile.schedule) && profile.schedule.length > 0)
+            return profile.schedule;
+
+        // 저장 전의 2.2.x 데이터를 위한 읽기 호환 경로.
+        const legacySchedule = scheduleData.special || [];
+        const legacyDates = scheduleData.special_dates || [];
+        if (!profiles.length && legacyDates.includes(dateKey) && legacySchedule.length > 0)
+            return legacySchedule;
+    }
     let sevenPeriodDays = scheduleData.seven_period_days;
     if (!Array.isArray(sevenPeriodDays)) {
         const oldSixDays = scheduleData.six_period_days || scheduleData.short_days || [3, 5];

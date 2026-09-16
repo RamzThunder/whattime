@@ -3,6 +3,7 @@ import os
 import sys
 import json
 import copy
+import re
 import threading
 import base64
 import datetime
@@ -11,7 +12,7 @@ import subprocess
 import tempfile
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '2.2.2'
+APP_VERSION = '2.2.3'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -19,6 +20,7 @@ UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/rel
 # ─────────────────────────────────────────
 if IS_MAC:
     import plistlib
+    from AppKit import NSWorkspace
 else:
     import winreg
     import ctypes
@@ -52,6 +54,7 @@ SETTINGS_HTML      = os.path.join(base_dir, 'settings.html')
 PROGRESS_HTML      = os.path.join(base_dir, 'progress_popup.html')
 PROGRESS_HISTORY_HTML = os.path.join(base_dir, 'progress_history.html')
 LESSON_END_HTML    = os.path.join(base_dir, 'lesson_end.html')
+POWERPOINT_CONFIRM_HTML = os.path.join(base_dir, 'powerpoint_confirm.html')
 
 WEBVIEW_STORAGE_PATH = None
 if not IS_MAC:
@@ -143,6 +146,7 @@ DEFAULT_SCHEDULE = {
         {"name": "수업 끝^-^",         "start": "15:30", "end": "16:20"}
     ],
     "special": [],
+    "special_schedules": [],
     "special_schedule_enabled": False,
     "special_schedule_opt_in_version": 1,
     "seven_period_days": [1, 2, 4],
@@ -513,6 +517,46 @@ def migrate_schedule(data):
     # become the 2.2.x date-specific exceptional schedule.
     if not isinstance(migrated.get('special'), list):
         migrated['special'] = []
+    if not isinstance(migrated.get('special_schedules'), list):
+        legacy_schedule = migrated.get('special') or []
+        legacy_dates = migrated.get('special_dates') or []
+        migrated['special_schedules'] = []
+        if legacy_schedule:
+            migrated['special_schedules'].append({
+                'id': 'legacy-special-schedule',
+                'name': '기존 특별 시간표',
+                'source_file': '',
+                'schedule': copy.deepcopy(legacy_schedule),
+                'dates': sorted({
+                    value for value in legacy_dates
+                    if isinstance(value, str) and re.fullmatch(r'\d{4}-\d{2}-\d{2}', value)
+                }),
+            })
+    normalized_profiles = []
+    claimed_dates = set()
+    for index, profile in enumerate(migrated['special_schedules']):
+        if not isinstance(profile, dict) or len(normalized_profiles) >= 30:
+            continue
+        profile_dates = profile.get('dates') if isinstance(profile.get('dates'), list) else []
+        profile_schedule = profile.get('schedule') if isinstance(profile.get('schedule'), list) else []
+        dates = []
+        for value in profile_dates:
+            if (isinstance(value, str)
+                    and re.fullmatch(r'\d{4}-\d{2}-\d{2}', value)
+                    and value not in claimed_dates):
+                dates.append(value)
+                claimed_dates.add(value)
+        normalized_profiles.append({
+            'id': str(profile.get('id') or f'special-{index + 1}')[:100],
+            'name': str(profile.get('name') or f'특별 시간표 {index + 1}')[:80],
+            'source_file': str(profile.get('source_file') or '')[:255],
+            'schedule': [
+                copy.deepcopy(item) for item in profile_schedule
+                if isinstance(item, dict)
+            ],
+            'dates': sorted(dates),
+        })
+    migrated['special_schedules'] = normalized_profiles
     if migrated.get('special_schedule_opt_in_version') != 1:
         migrated['special_schedule_enabled'] = False
         migrated['special_schedule_opt_in_version'] = 1
@@ -585,6 +629,27 @@ def _capture_desktop(path):
         message = result.stderr.decode(errors='replace').strip()
         raise RuntimeError(message or '화면 캡처에 실패했습니다.')
 
+def _is_powerpoint_running():
+    if not IS_MAC:
+        return False
+    try:
+        for application in NSWorkspace.sharedWorkspace().runningApplications():
+            bundle_id = str(application.bundleIdentifier() or '')
+            app_name = str(application.localizedName() or '')
+            if bundle_id.lower() == 'com.microsoft.powerpoint' or app_name == 'Microsoft PowerPoint':
+                return True
+        return False
+    except Exception:
+        try:
+            return subprocess.run(
+                ['/usr/bin/pgrep', '-x', 'Microsoft PowerPoint'],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=3,
+            ).returncode == 0
+        except Exception:
+            return False
+
 def _progress_public_record(record, include_image=False):
     result = {key: value for key, value in record.items() if key != 'image_path'}
     result['has_image'] = bool(record.get('image_path') and os.path.exists(record['image_path']))
@@ -605,6 +670,7 @@ class Api:
         self.progress_window = None
         self.progress_history_window = None
         self.lesson_end_window = None
+        self.powerpoint_confirm_window = None
         self._lesson_end_payload = None
         self._lesson_end_submitting = False
         self._progress_popup_payload = None
@@ -813,6 +879,48 @@ class Api:
                 pass
         return True
 
+    def open_powerpoint_quit_dialog(self):
+        if not _is_powerpoint_running():
+            return False
+
+        if self.powerpoint_confirm_window is not None:
+            if self.powerpoint_confirm_window in webview.windows:
+                try:
+                    self.powerpoint_confirm_window.on_top = True
+                except Exception:
+                    pass
+                return True
+            self.powerpoint_confirm_window = None
+
+        self.powerpoint_confirm_window = webview.create_window(
+            title='PowerPoint 종료 확인',
+            url=POWERPOINT_CONFIRM_HTML,
+            width=410,
+            height=230,
+            min_size=(360, 210),
+            resizable=False,
+            on_top=True,
+            js_api=self,
+        )
+
+        def on_closed():
+            self.powerpoint_confirm_window = None
+        self.powerpoint_confirm_window.events.closed += on_closed
+        return True
+
+    def close_powerpoint_quit_dialog(self):
+        if self.powerpoint_confirm_window:
+            try:
+                self.powerpoint_confirm_window.destroy()
+            except Exception:
+                pass
+            self.powerpoint_confirm_window = None
+        return True
+
+    def confirm_powerpoint_quit(self):
+        self.close_powerpoint_quit_dialog()
+        return self.quit_powerpoint()
+
     def get_startup_enabled(self):
         if IS_MAC:
             plist_path = os.path.expanduser('~/Library/LaunchAgents/com.whattime.app.plist')
@@ -1014,6 +1122,25 @@ class Api:
                 })
             result.sort(key=lambda item: item.get('saved_at', ''), reverse=True)
             return result
+
+    def update_lesson_progress_note(self, class_name, lesson_id, note=''):
+        class_name = str(class_name or '').strip()
+        lesson_id = str(lesson_id or '').strip()[:100]
+        note = str(note or '').strip()[:2000]
+        if not class_name or not lesson_id:
+            return {'ok': False, 'error': '수정할 진도 기록을 찾을 수 없습니다.'}
+
+        with PROGRESS_LOCK:
+            data = _load_progress()
+            classes = data.setdefault('classes', {})
+            records = _progress_records(classes.get(class_name))
+            record = next((item for item in records if item.get('lesson_id') == lesson_id), None)
+            if record is None:
+                return {'ok': False, 'error': '수정할 진도 기록을 찾을 수 없습니다.'}
+            record['note'] = note
+            classes[class_name] = records[:3]
+            _save_progress(data)
+            return {'ok': True, 'record': _progress_public_record(record)}
 
     def save_lesson_progress(self, class_name, subject='', note='', capture=False,
                              lesson_id='', automatic=False):

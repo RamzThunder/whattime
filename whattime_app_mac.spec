@@ -7,7 +7,7 @@ a = Analysis(
     ['whattime_app.py'],
     pathex=[],
     binaries=[],
-    datas=[('whattime.html', '.'), ('settings.html', '.'), ('progress_popup.html', '.'), ('progress_history.html', '.'), ('lesson_end.html', '.'), ('calendar.png', '.')] + collect_data_files('certifi'),
+    datas=[('whattime.html', '.'), ('settings.html', '.'), ('progress_popup.html', '.'), ('progress_history.html', '.'), ('lesson_end.html', '.'), ('powerpoint_confirm.html', '.'), ('calendar.png', '.')] + collect_data_files('certifi'),
     hiddenimports=[
         'webview',
         'webview.platforms.cocoa',

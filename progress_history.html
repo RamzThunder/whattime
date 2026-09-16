@@ -20,6 +20,7 @@ h1 { margin:0; font-size:1.35rem; }
 .subtitle { margin-top:5px; color:var(--dim); font-size:.82rem; }
 .header-actions { display:flex; gap:7px; }
 button { border:0; border-radius:8px; padding:8px 13px; cursor:pointer; font:inherit; font-size:.82rem; font-weight:650; }
+button:disabled { opacity:.4; cursor:default; }
 .secondary { background:var(--soft); color:var(--text); }
 .primary { background:#111; color:#fff; }
 .layout { display:grid; grid-template-columns:210px minmax(0,1fr); gap:14px; min-height:510px; }
@@ -41,8 +42,16 @@ button { border:0; border-radius:8px; padding:8px 13px; cursor:pointer; font:inh
 .record { padding:15px; border:1px solid var(--line); border-radius:11px; background:var(--panel); }
 .record-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
 .record-badge { color:var(--accent); font-size:.72rem; font-weight:750; }
+.record-head-actions { display:flex; align-items:center; justify-content:flex-end; gap:7px; }
 .record-meta { color:var(--dim); font-size:.73rem; text-align:right; }
+.edit-note-btn { padding:5px 8px; background:var(--soft); color:var(--text); font-size:.72rem; white-space:nowrap; }
 .record-note { margin-top:10px; padding:10px 12px; border-radius:8px; background:var(--soft); font-size:.86rem; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; }
+.note-editor { display:none; margin-top:10px; }
+.note-editor.show { display:block; }
+.note-editor textarea { width:100%; min-height:82px; padding:9px 10px; resize:vertical; border:1px solid var(--line); border-radius:8px; background:var(--panel); color:var(--text); font:inherit; font-size:.85rem; line-height:1.45; outline:none; }
+.note-editor textarea:focus { border-color:var(--accent); }
+.note-editor-actions { display:flex; justify-content:flex-end; gap:7px; margin-top:7px; }
+.note-editor-actions button { padding:6px 10px; font-size:.76rem; }
 .record-image { display:block; width:100%; max-height:330px; margin-top:11px; border:1px solid var(--line); border-radius:8px; object-fit:contain; object-position:top; background:var(--soft); cursor:zoom-in; }
 .record-image.expanded { max-height:none; cursor:zoom-out; }
 .empty { display:flex; min-height:410px; align-items:center; justify-content:center; color:var(--dim); font-size:.88rem; text-align:center; line-height:1.6; }
@@ -145,9 +154,53 @@ function renderRecords(className, records) {
         const head = makeElement('div', 'record-head');
         const badge = makeElement('div', 'record-badge', index === 0 ? '최근 기록' : `${index}회 전 기록`);
         const meta = makeElement('div', 'record-meta', [record.saved_at_label, record.subject].filter(Boolean).join(' · '));
-        head.append(badge, meta);
+        const headActions = makeElement('div', 'record-head-actions');
+        headActions.appendChild(meta);
+        const editButton = makeElement('button', 'edit-note-btn', '메모 수정');
+        editButton.disabled = !record.lesson_id;
+        headActions.appendChild(editButton);
+        head.append(badge, headActions);
         card.appendChild(head);
-        card.appendChild(makeElement('div', 'record-note', record.note || '메모 없이 저장했어요.'));
+        const noteView = makeElement('div', 'record-note', record.note || '메모 없이 저장했어요.');
+        card.appendChild(noteView);
+        const editor = makeElement('div', 'note-editor');
+        const textarea = makeElement('textarea');
+        textarea.maxLength = 2000;
+        textarea.value = record.note || '';
+        const editorActions = makeElement('div', 'note-editor-actions');
+        const cancelButton = makeElement('button', 'secondary', '취소');
+        const saveButton = makeElement('button', 'primary', '메모 저장');
+        editorActions.append(cancelButton, saveButton);
+        editor.append(textarea, editorActions);
+        card.appendChild(editor);
+        editButton.onclick = () => {
+            textarea.value = record.note || '';
+            noteView.style.display = 'none';
+            editor.classList.add('show');
+            textarea.focus();
+        };
+        cancelButton.onclick = () => {
+            editor.classList.remove('show');
+            noteView.style.display = '';
+        };
+        saveButton.onclick = async () => {
+            saveButton.disabled = true;
+            saveButton.textContent = '저장 중';
+            try {
+                const result = await window.pywebview.api.update_lesson_progress_note(
+                    className, record.lesson_id, textarea.value);
+                if (!result?.ok) throw new Error(result?.error || '메모를 저장하지 못했습니다.');
+                record.note = result.record?.note || '';
+                noteView.textContent = record.note || '메모 없이 저장했어요.';
+                editor.classList.remove('show');
+                noteView.style.display = '';
+            } catch (error) {
+                alert(error.message || '메모를 저장하지 못했습니다.');
+            } finally {
+                saveButton.disabled = false;
+                saveButton.textContent = '메모 저장';
+            }
+        };
         if (record.image_data_url) {
             const image = makeElement('img', 'record-image');
             image.src = record.image_data_url;
