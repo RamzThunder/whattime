@@ -614,6 +614,14 @@ body.settings-loading::before {
             <div class="schedule-list" id="list-special"></div>
             <button class="add-btn" onclick="addRow('special')">+ 교시 추가</button>
         </div>
+        <div class="theme-section" style="margin-top:20px">
+            <div class="theme-section-title">날짜별 개인 수업 조정</div>
+            <div class="startup-desc">직접 만든 시정과 학교 구독 시정에 모두 적용돼요. 변경은 선택한 날짜에만 저장돼요.</div>
+            <label for="specialPersonalDate">적용 날짜</label>
+            <input type="date" id="specialPersonalDate" onchange="renderSpecialPersonal()" style="margin:8px 0">
+            <div id="specialPersonalStatus" class="startup-desc"></div>
+            <div id="specialPersonalRows"></div>
+        </div>
     </div>
 
     <div class="tab-panel" id="panel-personal">
@@ -929,6 +937,8 @@ body.settings-loading::before {
 <div class="toast" id="toast"></div>
 
 <script src="subscription_confirm.js"></script>
+<script src="lesson_mapping.js"></script>
+<script src="lesson_mapping_editor.js"></script>
 <script>
 const TRANSPARENT_BG_CSS = 'repeating-conic-gradient(#d0d0d0 0% 25%, #fff 0% 50%) 0 0 / 8px 8px';
 
@@ -1366,6 +1376,8 @@ let data = { full: [], special_schedules: [], seven_period_days: [1, 2, 4], rest
 let subscriptionState = null;
 function renderSubscription(state) {
     subscriptionState = state;
+    data.subscribed_school=state.feed.schools.find(s=>s.id===state.school_id) || null;
+    renderSpecialPersonal();
     const select = document.getElementById('subscriptionSchool');
     select.replaceChildren(new Option('구독 안 함', ''));
     for (const school of state.feed.schools) select.add(new Option(school.name, school.id));
@@ -1480,6 +1492,8 @@ async function init() {
     renderList('full');
     renderRegularDayChecks();
     renderSpecialSchedules();
+    document.getElementById('specialPersonalDate').value ||= LessonMapping.dateKey(new Date());
+    renderSpecialPersonal();
     renderPersonalDayChips();
     renderPersonalList();
     document.getElementById('comciSchoolNameInput').value = data.comci_school_name || '';
@@ -1626,6 +1640,7 @@ function updateLabDependencies() {
 
 function onSpecialScheduleToggle(checked) {
     data.special_schedule_enabled = checked;
+    renderSpecialPersonal();
 }
 
 const REMINDER_COLORS = {start_background:'#eef4ff', start_foreground:'#123163', urgent_background:'#b91226', urgent_foreground:'#ffffff'};
@@ -1833,6 +1848,7 @@ function renderSpecialSchedules() {
         : '직접 입력한 시간표';
     renderSpecialDates();
     renderList('special');
+    renderSpecialPersonal();
 }
 
 function renameSelectedSpecialSchedule(value) {
@@ -1997,6 +2013,45 @@ function delRestRow(i) {
     renderRestSchedule();
 }
 
+function renderSpecialPersonal() {
+    const dateInput=document.getElementById('specialPersonalDate');
+    if(!dateInput?.value)return;
+    const date=new Date(dateInput.value+'T12:00:00');
+    const context=LessonMapping.scope(data,date);
+    const list=document.getElementById('specialPersonalRows');list.replaceChildren();
+    document.getElementById('specialPersonalStatus').textContent=context?context.name+' · 수업의 반을 기준으로 학년을 확인해요.':'이 날짜에 적용되는 특별시정이 없어요.';
+    if(!context)return;
+    for(const item of context.rows) {
+        const own={...LessonMapping.override(data,date,context,item)};
+        const card=document.createElement('div');card.style.cssText='padding:12px;border:1px solid #ddd;border-radius:9px;margin-top:10px';
+        const title=document.createElement('strong');title.textContent=item.name+' · '+item.start+'–'+item.end;card.append(title);
+        const current={...item,...own};
+        function store(){
+            data.special_personal_overrides ||= {};
+            const days=data.special_personal_overrides[dateInput.value] ||= {};
+            const entries=days[context.id] ||= {};
+            entries[LessonMapping.rowKey(item)]={...own};
+            refresh();
+        }
+        card.append(lessonLinkEditor(current,()=>{own.lesson_period=current.lesson_period;own.grades=current.grades;store();}));
+        const mode=document.createElement('select');mode.style.width='100%';
+        for(const [v,label] of [['default','기본 시간표 사용'],['custom','직접 입력'],['none','수업 없음']])mode.add(new Option(label,v));
+        mode.setAttribute('aria-label',item.name+' 개인 수업 방식');
+        mode.value=own.mode || 'default';card.append(mode);
+        const fields=document.createElement('div');const subject=document.createElement('input'),room=document.createElement('input');
+        subject.placeholder='수업명';room.placeholder='반 (예: 3-4)';
+        subject.setAttribute('aria-label',item.name+' 수업명');room.setAttribute('aria-label',item.name+' 반');
+        subject.value=own.name || '';room.value=own.room || '';fields.append(subject,room);
+        const hint=document.createElement('div');hint.className='startup-desc';hint.textContent='직접 입력은 연결 교시·학년과 관계없이 이 칸에 표시돼요.';fields.append(hint);card.append(fields);
+        const result=document.createElement('div');result.style.cssText='font-size:13px;margin-top:8px';card.append(result);
+        function refresh(){fields.hidden=mode.value!=='custom';const entry=LessonMapping.resolve(data,date,context,item);result.textContent=entry?.room||entry?.name?'표시: '+[entry.room,entry.name].filter(Boolean).join(' '):'표시할 개인 수업 없음';}
+        mode.onchange=()=>{own.mode=mode.value;if(own.mode==='custom'&&!own.name&&!own.room){const entry=LessonMapping.resolve(data,date,context,item);own.name=subject.value=entry?.name||'';own.room=room.value=entry?.room||'';}store();};
+        subject.oninput=()=>{own.name=subject.value;store();};room.oninput=()=>{own.room=room.value;store();};
+        const reset=document.createElement('button');reset.textContent='이 칸 조정 해제';reset.style.marginTop='8px';reset.onclick=()=>{const entries=data.special_personal_overrides?.[dateInput.value]?.[context.id];if(entries)delete entries[LessonMapping.rowKey(item)];renderSpecialPersonal();};card.append(reset);
+        refresh();list.append(card);
+    }
+}
+
 function getScheduleItems(type) {
     if (type === 'special') return getSelectedSpecialSchedule()?.schedule || [];
     return data[type] || [];
@@ -2004,13 +2059,17 @@ function getScheduleItems(type) {
 
 function updateScheduleItem(type, index, key, value) {
     const items = getScheduleItems(type);
-    if (items[index]) items[index][key] = value;
+    if (items[index]) {
+        if(type==='special')LessonMapping.freeze(items[index]);
+        items[index][key] = value;
+    }
 }
 
 function renderList(type) {
     const list = document.getElementById('list-' + type);
     list.innerHTML = '';
     getScheduleItems(type).forEach((item, i) => {
+        if(type==='special')LessonMapping.freeze(item);
         const row = document.createElement('div');
         row.className = 'period-row';
         const noCD = !!item.no_countdown;
@@ -2027,6 +2086,9 @@ function renderList(type) {
                 title="카운트다운 제외${noCD?' (적용됨)':''}">⊘</button>
             <button class="del-btn" onclick="delRow('${type}', ${i})">×</button>
         `;
+        if(type==='special') {
+            const links=lessonLinkEditor(item,renderSpecialPersonal);links.style.gridColumn='1 / -1';row.append(links);
+        }
         list.appendChild(row);
     });
 }
@@ -2060,6 +2122,7 @@ function switchTab(tab) {
     });
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     document.getElementById('panel-' + tab).classList.add('active');
+    if(tab==='special')renderSpecialPersonal();
 }
 
 async function save() {

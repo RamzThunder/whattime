@@ -17,7 +17,7 @@ from school_schedules import DEFAULT_SOURCE, SubscriptionStore, atomic_json
 from personal_timetable import apply_comci_result, comci_target, comci_weekly_due
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '3.0.1'
+APP_VERSION = '3.1.0'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -724,10 +724,11 @@ class Api:
                         settings_html = f.read()
                     # Inline the shared prompt for load_html: it has no file
                     # base URL and cannot resolve a relative script source.
-                    with open(os.path.join(base_dir, 'subscription_confirm.js'), 'r', encoding='utf-8') as f:
-                        settings_html = settings_html.replace(
-                            '<script src="subscription_confirm.js"></script>',
-                            '<script>' + f.read() + '</script>')
+                    for script in ('subscription_confirm.js', 'lesson_mapping.js', 'lesson_mapping_editor.js'):
+                        with open(os.path.join(base_dir, script), 'r', encoding='utf-8') as f:
+                            settings_html = settings_html.replace(
+                                '<script src="' + script + '"></script>',
+                                '<script>' + f.read() + '</script>')
                     settings_source = {'html': settings_html}
                 except OSError:
                     # Keep the existing file URL path as a safe fallback.

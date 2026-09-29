@@ -5,6 +5,7 @@ import re
 import sys
 import threading
 from personal_timetable import day_schedule
+from lesson_mapping import special_scope, resolve_personal
 
 
 def input_idle_seconds():
@@ -73,16 +74,17 @@ def current_lesson(data, school, now):
     for date in [adjusted.date(), adjusted.date() - dt.timedelta(days=1)]:
         schedule, subscribed = schedule_for_date(data, school, date)
         day = (date.weekday() + 1) % 7
+        context = special_scope(data, school, date)
         for index, item in enumerate(schedule):
             if item.get('no_countdown'):
                 continue
-            entry = personal_entry(data, item, index, day, subscribed)
+            entry = resolve_personal(data, date, context[0], item) if context else personal_entry(data, item, index, day, subscribed)
             room = str(entry.get('room') or '').strip()
             name = str(item.get('name') or '')
             is_period = bool(re.match(r'^\s*\d+교시', name))
             is_first_grade_lunch = (data.get('comci_joam_first_grade_fifth_period') and
                                    '점심' in name and '1학년 5교시' in name and room.startswith('1-'))
-            if not room or not (is_period or is_first_grade_lunch):
+            if not room or not (context or is_period or is_first_grade_lunch):
                 continue
             try:
                 start = dt.datetime.combine(date, dt.time.fromisoformat(item['start']))

@@ -1,0 +1,20 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const ctx=vm.createContext({assert});vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../lesson_mapping.js'),'utf8')+`
+const date=new Date(2026,8,29);
+const rows=[{id:'early',name:'3학년 6교시',lesson_period:6,grades:[3]},{id:'late',name:'이름 변경',lesson_period:6,grades:[1,2]}];
+const data={full:[{name:'아침활동'},{name:'6교시'}],personal:{'2':[{}, {room:'3-4',name:'국어'}]},special_schedules:[{id:'p',dates:['2026-09-29'],schedule:rows}]};
+const scope=LessonMapping.scope(data,date);
+assert.equal(scope.id,'local:p');assert.equal(LessonMapping.resolve(data,date,scope,rows[0]).room,'3-4');
+assert.equal(LessonMapping.resolve(data,date,scope,rows[1]),undefined);
+data.personal['2'][1].room='1-4';
+assert.equal(LessonMapping.resolve(data,date,scope,rows[0]),undefined);
+assert.equal(LessonMapping.resolve(data,date,scope,rows[1]).room,'1-4');
+data.special_personal_overrides={'2026-09-29':{'local:p':{late:{mode:'custom',name:'감독',room:'3-1'}}}};
+rows[1].name='또 변경';assert.equal(LessonMapping.resolve(data,date,scope,rows[1]).room,'3-1');
+data.special_personal_overrides['2026-09-29']['local:p'].late.mode='none';assert.equal(LessonMapping.resolve(data,date,scope,rows[1]),undefined);
+assert.equal(LessonMapping.resolve(data,new Date(2026,9,6),scope,rows[1]).room,'1-4');
+assert.equal(LessonMapping.resolve(data,date,scope,{name:'제 6 교시'}).room,'1-4');
+assert.equal(LessonMapping.resolve(data,date,scope,{name:'행사'}),undefined);
+assert.equal(LessonMapping.resolve(data,date,scope,{name:'3학년 6교시'}),undefined);
+const item={name:'제 6 교시'};LessonMapping.freeze(item);item.name='자유로운 이름';assert.equal(item.lesson_period,6);assert.ok(item.id);
+`,ctx);console.log('Shared lesson mapping and date overrides passed.');

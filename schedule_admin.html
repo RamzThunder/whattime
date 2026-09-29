@@ -53,6 +53,8 @@
 <p class="muted">사용자 앱은 시작할 때 변경을 확인하고, 사용자가 받아오기를 선택하면 적용해요. GitHub 캐시와 연결 상태에 따라 확인이 늦어질 수 있어요.</p>
 </fieldset>
 <dialog id="review"><h2>게시할 내용 확인</h2><p>아래 내용으로 공개 시정 파일 전체를 갱신합니다. 삭제한 날짜는 구독자의 다음 수신 때 취소됩니다.</p><div id="reviewText"></div><div class="row" style="margin-top:16px"><button onclick="document.getElementById('review').close()">돌아가기</button><button id="publishButton" class="primary" onclick="publishFeed()">GitHub에 게시</button></div></dialog>
+<script src="lesson_mapping.js"></script>
+<script src="lesson_mapping_editor.js"></script>
 <script>
 let feed = {version:1, schools:[]}, baseline = null, schoolIndex = -1, eventIndex = -1, dirty = false, loadedSource = null;
 const $ = id => document.getElementById(id);
@@ -148,6 +150,7 @@ function normalizeTime24(value) {
 }
 function renderPeriods(){
     $('periods').replaceChildren();event().periods.forEach((p,i)=>{const row=document.createElement('tr');
+        LessonMapping.freeze(p);
         const isMorning = !event().preserve_first_row && i === 0 && p.name === MORNING_NAME;
         for(const key of ['name','start','end','no_countdown']){
             const td=document.createElement('td'),input=document.createElement('input');
@@ -169,6 +172,8 @@ function renderPeriods(){
         button.textContent='삭제';button.disabled=isMorning;
         button.onclick=()=>{event().periods.splice(i,1);changed();renderPeriods();};
         td.append(button);row.append(td);$('periods').append(row);
+        const links=document.createElement('tr'),cell=document.createElement('td');cell.colSpan=5;
+        cell.append(lessonLinkEditor(p,changed));links.append(cell);$('periods').append(links);
     });
 }
 async function importDocument(){
@@ -205,7 +210,7 @@ async function reviewPublish(){
         feed=result.feed;schoolIndex=feed.schools.length?Math.min(schoolIndex,feed.schools.length-1):-1;eventIndex=-1;renderSchools();
         const lines=[`저장소: ${loadedSource.repository} / ${loadedSource.branch} / ${loadedSource.path}`,''];
         for(const old of baseline.schools){const s=feed.schools.find(s=>s.id===old.id);if(!s)lines.push(`삭제: ${old.name} (학교 전체)`);else for(const e of old.events)if(!s.events.some(n=>n.date===e.date))lines.push(`취소: ${old.name} · ${e.date} · ${e.title}`);}
-        for(const s of feed.schools){lines.push(`\n${s.name} (${s.id})`);if(!s.events.length)lines.push('  등록된 특별시정 없음');for(const e of s.events){lines.push(`  ${e.date} · ${e.title}`);for(const p of e.periods)lines.push(`    ${p.start}–${p.end} ${p.name}${p.no_countdown?' (카운트다운 제외)':''}`);}}
+        for(const s of feed.schools){lines.push(`\n${s.name} (${s.id})`);if(!s.events.length)lines.push('  등록된 특별시정 없음');for(const e of s.events){lines.push(`  ${e.date} · ${e.title}`);for(const p of e.periods)lines.push(`    ${p.start}–${p.end} ${p.name}${p.no_countdown?' (카운트다운 제외)':''} · 연결 ${p.lesson_period || '없음'} · ${(p.grades || [1,2,3]).join('·')}학년`);}}
         $('reviewText').textContent=lines.join('\n');$('review').showModal();
     }catch(e){status('게시 내용을 확인하지 못했어요.');}finally{busy(false);}
 }

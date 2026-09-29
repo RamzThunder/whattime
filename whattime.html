@@ -357,6 +357,7 @@ body.mini .lesson-history-btn { width:28px; padding:6px 0; font-size:.74rem; }
     </div>
 </div>
 
+<script src="lesson_mapping.js"></script>
 <script src="subscription_confirm.js"></script>
 <script>
 const weekNames = ["일요일","월요일","화요일","수요일","목요일","금요일","토요일"];
@@ -867,14 +868,7 @@ function publishedEvent(date) {
 }
 
 function subscribedPersonalEntry(item, date) {
-    // Published schedules may omit morning/lunch rows or change their order.
-    // Match a period to the user's ordinary schedule instead of shifting all personal lessons.
-    const ordinary = (scheduleData.seven_period_days || [1, 2, 4]).includes(date.getDay())
-        ? scheduleData.full : deriveSixPeriodSchedule(scheduleData.full);
-    const key = name => String(name || '').trim().match(/^(\d+)교시/)?.[1];
-    const period = key(item.name);
-    const index = (ordinary || []).findIndex(row => period ? key(row.name) === period : row.name === item.name);
-    return index < 0 ? undefined : scheduleData.personal?.[String(date.getDay())]?.[index];
+    return LessonMapping.resolve(scheduleData,date,LessonMapping.scope(scheduleData,date) || {id:'school:'+scheduleData.subscribed_school?.id},item);
 }
 
 function getTodaySchedule(dateOrDay) {
@@ -1092,10 +1086,11 @@ function render() {
 
         // 개인 시간표: 항상 표시
         let personalLabel = '';
-        const personalEntry = usingSchoolSchedule ? subscribedPersonalEntry(item, now) : personalSchedule[i];
+        const specialContext = LessonMapping.scope(scheduleData, now);
+        const personalEntry = specialContext ? LessonMapping.resolve(scheduleData, now, specialContext, item) : personalSchedule[i];
         if (personalEntry) {
             const parts = [personalEntry.room, personalEntry.name].filter(Boolean).join(' ');
-            if (parts) personalLabel = `<span class="personal-label">${parts}</span>`;
+            if (parts) personalLabel = `<span class="personal-label">${escapeScheduleText(parts)}</span>`;
         }
 
         if (isItemActive(sMin, eMin, currentMinutes)) {

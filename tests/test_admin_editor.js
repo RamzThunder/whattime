@@ -5,12 +5,15 @@ const assert = require('node:assert/strict');
 const source = fs.readFileSync(path.join(__dirname,'..','schedule_admin.html'),'utf8').match(/<script>([\s\S]*?)<\/script>/)[1];
 class Element {
     constructor(){this.children=[];this.style={};this.value='';}
+    add(item){this.children.push(item);}
     append(...items){this.children.push(...items);}
     replaceChildren(...items){this.children=[...items];}
     setAttribute(key,value){this[key]=value;}
 }
 const elements = {};
-const context = vm.createContext({assert,console,document:{getElementById:id=>elements[id] ||= new Element(),createElement:()=>new Element()},window:{addEventListener:()=>{}},confirm:()=>true});
+const context = vm.createContext({assert,console,Option:class {constructor(text,value){this.text=text;this.value=value;}},document:{createTextNode:text=>text,getElementById:id=>elements[id] ||= new Element(),createElement:()=>new Element()},window:{addEventListener:()=>{}},confirm:()=>true});
+vm.runInContext(fs.readFileSync(path.join(__dirname,'..','lesson_mapping.js'),'utf8'),context);
+vm.runInContext(fs.readFileSync(path.join(__dirname,'..','lesson_mapping_editor.js'),'utf8'),context);
 vm.runInContext(source+`
 feed={version:1,schools:[{id:'demo',name:'학교',events:[]}]};schoolIndex=0;
 newEvent();
@@ -21,7 +24,7 @@ assert.equal($('periods').children[0].children[0].children[0].readOnly,true);
 assert.equal($('periods').children[0].children[1].children[0].readOnly,true);
 assert.equal($('periods').children[0].children[4].children[0].disabled,true);
 addPeriod();assert.equal(event().periods[2].name,'2교시');
-const endInput=$('periods').children[1].children[2].children[0];
+const endInput=$('periods').children[2].children[2].children[0];
 assert.equal(endInput.type,'text','time controls must not switch to AM/PM by OS locale');
 endInput.value='1320';endInput.onblur();assert.equal(event().periods[1].end,'13:20');
 assert.equal(normalizeTime24('8:20'),'08:20');assert.equal(normalizeTime24('820'),'08:20');

@@ -11,6 +11,7 @@ for (const file of ['whattime.html', 'settings.html', 'schedule_admin.html', 'de
 const html = fs.readFileSync(path.join(root, 'whattime.html'), 'utf8');
 const functions = html.slice(html.indexOf('function deriveSixPeriodSchedule('), html.indexOf('function toMinutes('));
 const context = vm.createContext({assert});
+vm.runInContext(fs.readFileSync(path.join(root,'lesson_mapping.js'),'utf8'),context);
 vm.runInContext(functions + `
 const ordinary = [{name:'수업 전',start:'08:00',end:'08:40'}, {name:'1교시',start:'09:00',end:'09:45'}, {name:'2교시',start:'10:00',end:'10:45'}];
 const special = [{name:'1교시',start:'09:00',end:'09:30'}];

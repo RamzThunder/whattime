@@ -74,7 +74,7 @@ def validate_feed(value):
             periods = event.get('periods')
             if not isinstance(periods, list) or not 1 <= len(periods) <= 100:
                 raise ValueError('시정에는 1~100개의 교시가 필요해요. 취소하려면 날짜를 삭제하세요.')
-            rows, previous_end = [], ''
+            rows, previous_end, row_ids = [], '', set()
             for period in periods:
                 if not isinstance(period, dict):
                     raise ValueError('교시 형식이 잘못되었어요.')
@@ -88,6 +88,24 @@ def validate_feed(value):
                     raise ValueError('카운트다운 제외 값은 true/false여야 해요.')
                 rows.append({'name': clean_text(period.get('name'), '교시 이름'), 'start': start, 'end': end,
                              'no_countdown': period.get('no_countdown', False)})
+                if 'id' in period:
+                    row_id = clean_text(period['id'], '교시 ID')
+                    if row_id in row_ids:
+                        raise ValueError('교시 ID가 중복돼요.')
+                    row_ids.add(row_id)
+                    rows[-1]['id'] = row_id
+                if 'lesson_period' in period:
+                    number = period['lesson_period']
+                    if type(number) is not int or not 0 <= number <= 12:
+                        raise ValueError('연결 교시는 없음 또는 1~12교시로 선택하세요.')
+                    rows[-1]['lesson_period'] = number
+                if 'grades' in period:
+                    grades = period['grades']
+                    if (not isinstance(grades, list) or not grades or
+                            any(type(g) is not int or g not in (1, 2, 3) for g in grades) or len(set(grades)) != len(grades)):
+                        raise ValueError('적용 학년은 1·2·3학년 중 하나 이상 선택하세요.')
+                    rows[-1]['grades'] = sorted(grades)
+
             entry = {'date': date, 'title': title, 'periods': rows}
             if 'preserve_first_row' in event:
                 if not isinstance(event['preserve_first_row'], bool):

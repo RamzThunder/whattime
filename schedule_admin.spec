@@ -5,7 +5,7 @@ from PyInstaller.utils.hooks import collect_data_files
 is_mac = sys.platform == 'darwin'
 a = Analysis(
     ['schedule_admin.py'], pathex=[], binaries=[],
-    datas=[('schedule_admin.html', '.')] + collect_data_files('certifi'),
+    datas=[('lesson_mapping.js', '.'), ('lesson_mapping_editor.js', '.'), ('schedule_admin.html', '.')] + collect_data_files('certifi'),
     hiddenimports=['webview', 'certifi', 'bottle', 'proxy_tools', 'keyring.backends.macOS' if is_mac else 'keyring.backends.Windows'] + (
         ['webview.platforms.cocoa', 'webview.js', 'objc', 'Foundation', 'AppKit', 'WebKit', 'Quartz'] if is_mac else []),
     hookspath=[], hooksconfig={}, runtime_hooks=[], excludes=[], noarchive=False,
