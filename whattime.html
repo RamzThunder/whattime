@@ -357,6 +357,7 @@ body.mini .lesson-history-btn { width:28px; padding:6px 0; font-size:.74rem; }
     </div>
 </div>
 
+<script src="subscription_confirm.js"></script>
 <script>
 const weekNames = ["일요일","월요일","화요일","수요일","목요일","금요일","토요일"];
 let scheduleData = null;
@@ -1279,9 +1280,7 @@ async function checkSchoolSubscriptionAtStartup() {
         if (!state.school_id) return;
         const result = await window.pywebview.api.check_school_subscription();
         if (!result.ok) return; // Keep the last accepted schedule when offline.
-        const summary = result.changes.slice(0, 10).join('\n');
-        const more = result.changes.length > 10 ? `\n외 ${result.changes.length - 10}건` : '';
-        if (result.requires_confirmation && !confirm(`${result.school_name} 특별시정 변경이 있어요.\n\n${summary}${more}\n\n받아와서 적용할까요? 취소하면 기존 시정을 유지해요.`)) {
+        if (result.requires_confirmation && !await confirmSchoolSubscription(result)) {
             await window.pywebview.api.decline_school_subscription(result.proposal_id);
             return;
         }

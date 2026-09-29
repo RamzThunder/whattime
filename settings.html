@@ -928,6 +928,7 @@ body.settings-loading::before {
 
 <div class="toast" id="toast"></div>
 
+<script src="subscription_confirm.js"></script>
 <script>
 const TRANSPARENT_BG_CSS = 'repeating-conic-gradient(#d0d0d0 0% 25%, #fff 0% 50%) 0 0 / 8px 8px';
 
@@ -1395,7 +1396,7 @@ async function refreshSubscription() {
     try {
         const result = await window.pywebview.api.check_school_subscription();
         if (!result.ok) { renderSubscription(result.state); return; }
-        if (result.requires_confirmation && !confirm(`${result.school_name} 특별시정 변경을 받아올까요?\n\n${result.changes.slice(0, 10).join('\n')}\n\n취소하면 기존 시정을 유지해요.`)) {
+        if (result.requires_confirmation && !await confirmSchoolSubscription(result)) {
             renderSubscription(await window.pywebview.api.decline_school_subscription(result.proposal_id));
             return;
         }

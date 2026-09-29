@@ -4,7 +4,7 @@
 
 ![메인 화면 안내](docs/images/main-controls.svg)
 
-현재 버전: **3.0.0** · [변경 사항](docs/releases/v3.0.0.md)
+현재 버전: **3.0.1** · [변경 사항](docs/releases/v3.0.1.md)
 
 ## 다운로드
 

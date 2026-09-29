@@ -7,7 +7,7 @@ a = Analysis(
     ['whattime_app.py'],
     pathex=[],
     binaries=[],
-    datas=[('whattime.html', '.'), ('settings.html', '.'), ('progress_popup.html', '.'), ('progress_history.html', '.'), ('lesson_end.html', '.'), ('powerpoint_confirm.html', '.'), ('desktop_reminder.html', '.'), ('calendar.png', '.')] + collect_data_files('certifi'),
+    datas=[('subscription_confirm.js', '.'), ('whattime.html', '.'), ('settings.html', '.'), ('progress_popup.html', '.'), ('progress_history.html', '.'), ('lesson_end.html', '.'), ('powerpoint_confirm.html', '.'), ('desktop_reminder.html', '.'), ('calendar.png', '.')] + collect_data_files('certifi'),
     hiddenimports=[
         'webview',
         'webview.platforms.cocoa',
@@ -62,8 +62,8 @@ app = BUNDLE(
     icon='icon.icns',
     bundle_identifier='com.whattime.app',
     info_plist={
-        'CFBundleShortVersionString': '3.0.0',
-        'CFBundleVersion': '3.0.0',
+        'CFBundleShortVersionString': '3.0.1',
+        'CFBundleVersion': '3.0.1',
         'CFBundleDisplayName': '지금 몇교시야',
         'CFBundleName': '지금 몇교시야',
     },

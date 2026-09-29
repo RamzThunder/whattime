@@ -62,7 +62,7 @@ console.log('Widget subscription behavior and HTML JavaScript syntax passed.');
         sync_weekly_comci:async()=>{counts.weekly++;return weeklyResult;},
     };
     const flowContext = vm.createContext({Date:ClockDate, window:{pywebview:{api}},
-        document:{getElementById:()=>status}, confirm:()=>{counts.prompt++;return consent;},
+        document:{getElementById:()=>status}, confirmSchoolSubscription:async()=>{counts.prompt++;return consent;},
         loadSchedule:async()=>{}, reloadSchedule:async()=>{counts.reload++;},
         setTimeout:()=>{}, console});
     const dateFunction = html.slice(html.indexOf('function localDateKey('),html.indexOf('function publishedEvent('));

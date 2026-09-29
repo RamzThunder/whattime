@@ -5,7 +5,7 @@ a = Analysis(
     ['whattime_app.py'],
     pathex=[],
     binaries=[],
-    datas=[('whattime.html', '.'), ('settings.html', '.'), ('progress_popup.html', '.'), ('progress_history.html', '.'), ('lesson_end.html', '.'), ('powerpoint_confirm.html', '.'), ('desktop_reminder.html', '.')],
+    datas=[('subscription_confirm.js', '.'), ('whattime.html', '.'), ('settings.html', '.'), ('progress_popup.html', '.'), ('progress_history.html', '.'), ('lesson_end.html', '.'), ('powerpoint_confirm.html', '.'), ('desktop_reminder.html', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
