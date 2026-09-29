@@ -115,10 +115,10 @@ h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; }
 .col-headers span { font-size: 0.75rem; color: #aaa; padding-left: 2px; }
 
 .personal-row {
-    grid-template-columns: 1fr 1fr 80px;
+    grid-template-columns: 1fr 1fr 80px 70px;
 }
 .personal-col-headers {
-    grid-template-columns: 1fr 1fr 80px;
+    grid-template-columns: 1fr 1fr 80px 70px;
 }
 .period-label {
     font-size: 0.85rem; color: #555; padding: 6px 8px;
@@ -523,6 +523,16 @@ body.settings-loading::before {
 
 <!-- ── 일정 관리 패널 ── -->
 <div id="main-panel-schedule" class="main-panel">
+    <div class="text-section">
+        <div class="text-section-title">🏫 학교 특별시정 구독</div>
+        <div style="display:flex;gap:6px;margin:12px 0;align-items:center;flex-wrap:nowrap;">
+            <select id="subscriptionSchool" class="preview-select" style="flex:1;min-width:0" aria-label="구독할 학교"><option value="">구독 안 함</option></select>
+            <button class="data-btn" id="subscriptionApply" style="width:auto;flex:0 0 auto;white-space:nowrap" onclick="selectSubscription()">적용</button>
+            <button class="data-btn" id="subscriptionRefresh" style="width:auto;flex:0 0 auto;white-space:nowrap" onclick="refreshSubscription()">새로고침</button>
+        </div>
+        <p class="startup-desc" id="subscriptionStatus" role="status"></p>
+        <div id="subscriptionEvents" class="startup-desc" style="white-space:pre-wrap;max-height:160px;overflow:auto"></div>
+    </div>
 
     <div class="tabs">
         <button class="tab-btn active" data-tab="full" onclick="switchTab('full')">📅 일반 시정</button>
@@ -545,6 +555,18 @@ body.settings-loading::before {
     </div>
 
     <div class="tab-panel" id="panel-special">
+    <div class="startup-section">
+        <div>
+            <div class="startup-label">⚡ 특별 시정</div>
+            <div class="startup-desc">지정한 날짜에 단축·행사 시정을 적용해요</div>
+        </div>
+        <div class="toggle-wrap">
+            <input type="checkbox" class="toggle-input" id="specialScheduleToggle" onchange="onSpecialScheduleToggle(this.checked)">
+            <label class="toggle-label" for="specialScheduleToggle"></label>
+        </div>
+    </div>
+
+
         <div class="text-section">
             <div class="text-section-title">새 특별 시간표 만들기</div>
             <div class="startup-desc" id="hwpxImportDesc" style="line-height:1.45;margin-bottom:10px;">
@@ -617,8 +639,13 @@ body.settings-loading::before {
             <div class="startup-desc" style="line-height:1.45;margin:8px 0 10px;">
                 교사 번호는 컴시간 교사용 화면의 교사 목록에 표시되는 순번입니다.
                 컴시간이 학교 이름을 숨기는 경우 입력한 학교 이름으로 표시합니다.
-                입력한 교사의 이번 주차 시간표를 개인 시간표에 채웁니다.
+                입력한 교사의 이번 주차 시간표를 개인 시간표에 채웁니다. 직접 입력한 일정은 유지해요.
             </div>
+            <label class="startup-desc" style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+                <input type="checkbox" id="comciWeeklyAutoToggle" onchange="data.comci_weekly_auto_enabled=this.checked">
+                매주 월요일 자동 불러오기 (학교코드·교사 번호를 저장하면 적용)
+            </label>
+            <div class="startup-desc" id="comciWeeklyStatus" role="status" style="margin-bottom:10px"></div>
             <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
                 <div class="startup-desc" id="comciImportDesc">학교코드와 교사 번호를 입력하세요</div>
                 <button class="btn btn-save" id="comciImportBtn"
@@ -626,12 +653,27 @@ body.settings-loading::before {
                     onclick="importComciSchedule()">이번 주 불러오기</button>
             </div>
         </div>
+    <div class="startup-section">
+        <div>
+            <div class="startup-label">🍱 1학년 5교시를 점심시간에 배치</div>
+            <div class="startup-desc" style="line-height:1.45;">
+                컴시간의 5교시가 1학년 수업이면 점심 블록에 넣어요. 다음 불러오기부터 적용돼요.
+            </div>
+        </div>
+        <div class="toggle-wrap">
+            <input type="checkbox" class="toggle-input" id="comciJoamFirstGradeFifthToggle"
+                onchange="onComciJoamFirstGradeFifthChange(this.checked)">
+            <label class="toggle-label" for="comciJoamFirstGradeFifthToggle"></label>
+        </div>
+    </div>
         <div style="font-size:0.8rem; color:#888; margin-bottom:6px;">수업을 입력할 요일을 선택하세요</div>
         <div class="days-row" id="personalDaysRow" style="margin-bottom:14px;"></div>
         <div class="col-headers personal-col-headers">
-            <span>교시</span><span>수업명</span><span style="text-align:center">반</span>
+            <span>교시</span><span>수업명</span><span style="text-align:center">반</span><span style="text-align:center;word-break:keep-all">직접 입력<br>유지</span>
         </div>
         <div class="schedule-list" id="list-personal"></div>
+        <p class="startup-desc">직접 입력하거나 수정한 칸은 컴시간을 다시 불러와도 유지돼요. 자동 갱신할 칸은 ‘직접 입력 유지’를 해제하세요.</p>
+        <p class="startup-desc">이전 버전에서 입력된 내용은 출처를 구분할 수 없어 우선 보호해요. 컴시간으로 갱신할 수업 칸은 체크를 한 번 해제해 주세요.</p>
     </div>
 
     <div class="tab-panel" id="panel-rest">
@@ -834,28 +876,49 @@ body.settings-loading::before {
 
     <div class="startup-section">
         <div>
-            <div class="startup-label">⚡ 특별 시정</div>
-            <div class="startup-desc">지정한 날짜에 단축·행사 시정을 적용해요</div>
-        </div>
-        <div class="toggle-wrap">
-            <input type="checkbox" class="toggle-input" id="specialScheduleToggle" onchange="onSpecialScheduleToggle(this.checked)">
-            <label class="toggle-label" for="specialScheduleToggle"></label>
-        </div>
-    </div>
-
-    <div class="startup-section">
-        <div>
-            <div class="startup-label">🍱 1학년 5교시를 점심시간에 배치</div>
-            <div class="startup-desc" style="line-height:1.45;">
-                컴시간의 5교시가 1학년 수업이면 점심 블록에 넣어요. 다음 불러오기부터 적용돼요.
+            <div class="startup-label">🖥 데스크탑으로 지정</div>
+            <div class="startup-desc" style="line-height:1.5">수업 시작 때 이동할 반을 크게 알려줘요. 시작 20초 후에도 마우스·키보드 입력이 있으면 더 큰 빨간 알림을 한 번 띄워요.</div>
+            <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+                <button class="data-btn" style="width:auto" onclick="previewDesktopReminder(false)">시작 알림 미리보기</button>
+                <button class="data-btn" style="width:auto" onclick="previewDesktopReminder(true)">재알림 미리보기</button>
             </div>
+            <div class="startup-desc" id="desktopReminderStatus" role="status"></div>
         </div>
         <div class="toggle-wrap">
-            <input type="checkbox" class="toggle-input" id="comciJoamFirstGradeFifthToggle"
-                onchange="onComciJoamFirstGradeFifthChange(this.checked)">
-            <label class="toggle-label" for="comciJoamFirstGradeFifthToggle"></label>
+            <input type="checkbox" class="toggle-input" id="desktopModeToggle" onchange="data.desktop_mode_enabled=this.checked">
+            <label class="toggle-label" for="desktopModeToggle"></label>
         </div>
     </div>
+    <details style="margin:0 0 20px;padding:14px;border:1px solid #ddd;border-radius:10px">
+        <summary style="cursor:pointer;font-weight:600">알림 꾸미기</summary>
+        <label style="display:block;margin-top:14px" for="reminder_start_title">첫 알림 문구</label>
+        <input type="text" id="reminder_start_title" maxlength="80" placeholder="수업 시작 시간이에요!" style="width:100%;box-sizing:border-box;margin-top:6px;padding:9px" oninput="updateReminderText()">
+        <label style="display:block;margin-top:14px" for="reminder_urgent_title">재알림 문구</label>
+        <input type="text" id="reminder_urgent_title" maxlength="80" placeholder="컴퓨터는 잠시 내려놓고, 수업 가세요!" style="width:100%;box-sizing:border-box;margin-top:6px;padding:9px" oninput="updateReminderText()">
+        <label style="display:block;margin-top:14px" for="reminder_button_label">확인 버튼 문구</label>
+        <input type="text" id="reminder_button_label" maxlength="24" placeholder="지금 갈게요!" style="width:100%;box-sizing:border-box;margin-top:6px;padding:9px" oninput="updateReminderText()">
+        <label style="display:flex;align-items:center;justify-content:space-between;margin-top:12px" for="reminder_start_background">첫 알림 배경색<input type="color" id="reminder_start_background" value="#eef4ff" oninput="updateReminderText()"></label>
+        <label style="display:flex;align-items:center;justify-content:space-between;margin-top:12px" for="reminder_start_foreground">첫 알림 글자색<input type="color" id="reminder_start_foreground" value="#123163" oninput="updateReminderText()"></label>
+        <label style="display:flex;align-items:center;justify-content:space-between;margin-top:12px" for="reminder_urgent_background">재알림 배경색<input type="color" id="reminder_urgent_background" value="#b91226" oninput="updateReminderText()"></label>
+        <label style="display:flex;align-items:center;justify-content:space-between;margin-top:12px" for="reminder_urgent_foreground">재알림 글자색<input type="color" id="reminder_urgent_foreground" value="#ffffff" oninput="updateReminderText()"></label>
+        <fieldset style="margin:14px 0 0;border:1px solid #ddd;border-radius:8px;padding:10px">
+            <legend>첫 알림 배경 사진</legend>
+            <input type="file" id="reminder_start_file" accept="image/jpeg,image/png,image/webp" onchange="chooseReminderPhoto('start',this)">
+            <img id="reminder_start_thumbnail" alt="첫 알림 배경 사진 미리보기" hidden style="width:100%;max-height:140px;object-fit:cover;margin-top:8px;border-radius:6px">
+            <button class="data-btn" style="margin-top:8px" onclick="removeReminderPhoto('start')">사진 지우기</button>
+            <label style="display:flex;align-items:center;gap:8px;margin-top:8px" for="reminder_start_dim">어둡기<input type="range" id="reminder_start_dim" min="0" max="80" value="40" oninput="updateReminderPhotoDim('start',this.value)"><output id="reminder_start_dim_value">40%</output></label>
+        </fieldset>
+        <fieldset style="margin:14px 0 0;border:1px solid #ddd;border-radius:8px;padding:10px">
+            <legend>재알림 배경 사진</legend>
+            <input type="file" id="reminder_urgent_file" accept="image/jpeg,image/png,image/webp" onchange="chooseReminderPhoto('urgent',this)">
+            <img id="reminder_urgent_thumbnail" alt="재알림 배경 사진 미리보기" hidden style="width:100%;max-height:140px;object-fit:cover;margin-top:8px;border-radius:6px">
+            <button class="data-btn" style="margin-top:8px" onclick="removeReminderPhoto('urgent')">사진 지우기</button>
+            <label style="display:flex;align-items:center;gap:8px;margin-top:8px" for="reminder_urgent_dim">어둡기<input type="range" id="reminder_urgent_dim" min="0" max="80" value="40" oninput="updateReminderPhotoDim('urgent',this.value)"><output id="reminder_urgent_dim_value">40%</output></label>
+        </fieldset>
+        <div class="startup-desc" style="margin-top:10px">JPG·PNG·WebP 사진은 앱에 복사해 저장해요. 사진을 고르면 글자색이 흰색으로 바뀌며, 다시 조절할 수 있어요.</div>
+        <div class="startup-desc" style="margin-top:10px">빈칸은 기본 문구를 사용해요. 미리보기로 확인한 뒤 저장하세요.</div>
+        <button class="data-btn" style="margin-top:10px" onclick="resetReminderText()">꾸미기 기본값으로 되돌리기</button>
+    </details>
 </div><!-- /main-panel-labs -->
 
 <div class="footer">
@@ -1299,6 +1362,56 @@ const WEEKDAYS = [1,2,3,4,5];
 const ALL_DAYS_MON_FIRST = [1,2,3,4,5,6,0];
 
 let data = { full: [], special_schedules: [], seven_period_days: [1, 2, 4], rest_days: [0, 6], rest_schedules: {"0":[],"1":[],"2":[],"3":[],"4":[],"5":[],"6":[]} };
+let subscriptionState = null;
+function renderSubscription(state) {
+    subscriptionState = state;
+    const select = document.getElementById('subscriptionSchool');
+    select.replaceChildren(new Option('구독 안 함', ''));
+    for (const school of state.feed.schools) select.add(new Option(school.name, school.id));
+    const school = state.feed.schools.find(s => s.id === state.school_id);
+    if (state.school_id && !school) select.add(new Option('게시 목록에서 삭제된 학교 (적용 시정 없음)', state.school_id));
+    select.value = state.school_id;
+    const success = state.last_success ? new Date(state.last_success).toLocaleString() : '아직 없음';
+    document.getElementById('subscriptionStatus').textContent =
+        (state.school_id ? `구독 중: ${school?.name || '삭제된 학교'}. ` : '구독하지 않고 있어요. ') +
+        `마지막 수신: ${success}` + (state.error ? ` · ${state.error} 기존에 받은 시정은 유지돼요.` : '');
+    const today = new Date();
+    const dateKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+    const events = (school?.events || []).filter(e => e.date >= dateKey);
+    document.getElementById('subscriptionEvents').textContent = school
+        ? (events.length ? events.map(e => `${e.date} · ${e.title} (${e.periods.length}개 일정)`).join('\n') : '예정된 특별시정이 없어요.') : '';
+}
+async function initSubscription() {
+    try { renderSubscription(await window.pywebview.api.get_school_subscription()); }
+    catch (e) { document.getElementById('subscriptionStatus').textContent = '구독 정보를 읽지 못했어요.'; }
+}
+function subscriptionBusy(busy) {
+    for (const id of ['subscriptionApply', 'subscriptionRefresh', 'subscriptionSchool'])
+        document.getElementById(id).disabled = busy;
+}
+async function refreshSubscription() {
+    subscriptionBusy(true);
+    document.getElementById('subscriptionStatus').textContent = '학교 시정을 확인하고 있어요…';
+    try {
+        const result = await window.pywebview.api.check_school_subscription();
+        if (!result.ok) { renderSubscription(result.state); return; }
+        if (result.requires_confirmation && !confirm(`${result.school_name} 특별시정 변경을 받아올까요?\n\n${result.changes.slice(0, 10).join('\n')}\n\n취소하면 기존 시정을 유지해요.`)) {
+            renderSubscription(await window.pywebview.api.decline_school_subscription(result.proposal_id));
+            return;
+        }
+        renderSubscription(await window.pywebview.api.accept_school_subscription(result.proposal_id));
+    } catch (e) { document.getElementById('subscriptionStatus').textContent = '시정을 불러오지 못했어요. 인터넷 연결을 확인하세요.'; }
+    finally { subscriptionBusy(false); }
+}
+async function selectSubscription() {
+    subscriptionBusy(true);
+    try {
+        renderSubscription(await window.pywebview.api.select_school_subscription(document.getElementById('subscriptionSchool').value));
+        showToast(subscriptionState.school_id ? '학교 특별시정을 구독했어요' : '구독을 해제했어요');
+    } catch (e) { document.getElementById('subscriptionStatus').textContent = '구독을 저장하지 못했어요. 다시 시도하세요.'; }
+    finally { subscriptionBusy(false); }
+}
+
 let currentTab = 'full';
 let restDay = "0";
 let selectedSpecialId = '';
@@ -1311,6 +1424,7 @@ function markSettingsReady() {
 
 async function init() {
     data = await window.pywebview.api.get_schedule();
+    await initSubscription();
     if (!Array.isArray(data.seven_period_days)) {
         const oldSixDays = Array.isArray(data.six_period_days)
             ? data.six_period_days
@@ -1370,6 +1484,8 @@ async function init() {
     document.getElementById('comciSchoolNameInput').value = data.comci_school_name || '';
     document.getElementById('comciSchoolCodeInput').value = data.comci_school_code || '';
     document.getElementById('comciTeacherNumberInput').value = data.comci_teacher_number || '';
+    document.getElementById('comciWeeklyAutoToggle').checked = data.comci_weekly_auto_enabled !== false;
+    renderComciSyncStatus();
     if (data.comci_joam_first_grade_fifth_period === undefined)
         data.comci_joam_first_grade_fifth_period = false;
     document.getElementById('comciJoamFirstGradeFifthToggle').checked =
@@ -1408,9 +1524,20 @@ async function init() {
     document.getElementById('progressAutoSaveToggle').checked = data.progress_auto_save !== false;
     document.getElementById('progressAutoCaptureToggle').checked = !!data.progress_auto_capture;
     document.getElementById('powerPointQuitToggle').checked = !!data.quit_powerpoint_on_lesson_end;
-    document.getElementById('specialScheduleToggle').checked = data.special_schedule_enabled === true;
+    document.getElementById('specialScheduleToggle').checked = data.special_schedule_enabled !== false;
+    document.getElementById('desktopModeToggle').checked = data.desktop_mode_enabled === true;
+    for (const key of ['start_title', 'urgent_title', 'button_label']) {
+        document.getElementById('reminder_' + key).value = data.desktop_reminder_text?.[key] || '';
+    }
+    for (const [key, fallback] of Object.entries(REMINDER_COLORS)) {
+        const value = data.desktop_reminder_text?.[key];
+        document.getElementById('reminder_' + key).value = /^#[0-9a-f]{6}$/i.test(value || '') ? value : fallback;
+    }
+    refreshReminderPhotos();
+    window.pywebview.api.get_desktop_reminder_status().then(result => {
+        document.getElementById('desktopReminderStatus').textContent = result.error || '';
+    }).catch(() => {});
     updateLabDependencies();
-    updateSpecialScheduleAvailability();
 
     const scale = data.font_scale || 1.0;
     document.getElementById('fontSizeDisplay').textContent = Math.round(scale * 100) + '%';
@@ -1498,14 +1625,101 @@ function updateLabDependencies() {
 
 function onSpecialScheduleToggle(checked) {
     data.special_schedule_enabled = checked;
-    updateSpecialScheduleAvailability();
 }
 
-function updateSpecialScheduleAvailability() {
-    const enabled = data.special_schedule_enabled === true;
-    const tabButton = document.querySelector('.tab-btn[data-tab="special"]');
-    if (tabButton) tabButton.style.display = enabled ? '' : 'none';
-    if (!enabled && currentTab === 'special') switchTab('full');
+const REMINDER_COLORS = {start_background:'#eef4ff', start_foreground:'#123163', urgent_background:'#b91226', urgent_foreground:'#ffffff'};
+function updateReminderText() {
+    data.desktop_reminder_text = {...data.desktop_reminder_text, ...Object.fromEntries(
+        ['start_title', 'urgent_title', 'button_label'].map(key =>
+            [key, document.getElementById('reminder_' + key).value.trim()]))};
+    for (const key of Object.keys(REMINDER_COLORS)) {
+        data.desktop_reminder_text[key] = document.getElementById('reminder_' + key).value;
+    }
+}
+function resetReminderText() {
+    data.desktop_reminder_text = {};
+    for (const kind of ['start', 'urgent']) {
+        reminderPhotoVersions[kind]++;
+        document.getElementById('reminder_' + kind + '_file').value = '';
+    }
+    refreshReminderPhotos();
+    for (const key of ['start_title', 'urgent_title', 'button_label']) {
+        document.getElementById('reminder_' + key).value = '';
+    }
+    for (const [key, value] of Object.entries(REMINDER_COLORS)) {
+        document.getElementById('reminder_' + key).value = value;
+    }
+    updateReminderText();
+}
+const reminderPhotoVersions = {start:0, urgent:0};
+function refreshReminderPhotos() {
+    for (const kind of ['start', 'urgent']) {
+        const settings = data.desktop_reminder_text || {};
+        const thumbnail = document.getElementById('reminder_' + kind + '_thumbnail');
+        thumbnail.hidden = !settings[kind + '_image'];
+        if (settings[kind + '_image']) thumbnail.src = settings[kind + '_image'];
+        else thumbnail.removeAttribute('src');
+        const dim = settings[kind + '_dim'] ?? 40;
+        document.getElementById('reminder_' + kind + '_dim').value = dim;
+        document.getElementById('reminder_' + kind + '_dim_value').textContent = dim + '%';
+    }
+}
+function updateReminderPhotoDim(kind, value) {
+    data.desktop_reminder_text ||= {};
+    data.desktop_reminder_text[kind + '_dim'] = Number(value);
+    refreshReminderPhotos();
+}
+function removeReminderPhoto(kind) {
+    reminderPhotoVersions[kind]++;
+    data.desktop_reminder_text ||= {};
+    delete data.desktop_reminder_text[kind + '_image'];
+    document.getElementById('reminder_' + kind + '_file').value = '';
+    refreshReminderPhotos();
+}
+async function chooseReminderPhoto(kind, input) {
+    const file = input.files[0];
+    if (!file) return;
+    const version = ++reminderPhotoVersions[kind];
+    if (!['image/jpeg','image/png','image/webp'].includes(file.type) || file.size > 20 * 1024 * 1024) {
+        showToast('20MB 이하의 JPG·PNG·WebP 사진을 골라 주세요.');
+        input.value = '';
+        return;
+    }
+    const url = URL.createObjectURL(file);
+    try {
+        const photo = await new Promise((resolve, reject) => {
+            const img = new Image(); img.onload = () => resolve(img); img.onerror = reject; img.src = url;
+        });
+        const scale = Math.min(1, 1280 / Math.max(photo.naturalWidth, photo.naturalHeight));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(photo.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(photo.naturalHeight * scale));
+        canvas.getContext('2d').drawImage(photo, 0, 0, canvas.width, canvas.height);
+        const encoded = canvas.toDataURL('image/jpeg', .8);
+        if (encoded.length > 2000000) throw new Error('Image too large');
+        if (version !== reminderPhotoVersions[kind]) return;
+        data.desktop_reminder_text ||= {};
+        data.desktop_reminder_text[kind + '_image'] = encoded;
+        data.desktop_reminder_text[kind + '_foreground'] = '#ffffff';
+        document.getElementById('reminder_' + kind + '_foreground').value = '#ffffff';
+        refreshReminderPhotos();
+    } catch (error) {
+        if (version === reminderPhotoVersions[kind]) showToast('사진을 읽지 못했어요. 다른 사진을 골라 주세요.');
+    } finally {
+        URL.revokeObjectURL(url);
+        input.value = '';
+    }
+}
+async function previewDesktopReminder(urgent) {
+    if (typeof window.pywebview?.api?.preview_desktop_reminder !== 'function') {
+        showToast('앱을 완전히 종료한 뒤 다시 실행해 주세요. 새 알림 기능을 불러와야 해요.');
+        return;
+    }
+    try { await window.pywebview.api.preview_desktop_reminder(urgent, data.desktop_reminder_text || {}); }
+    catch(e) {
+        console.error('수업 알림 미리보기 오류:', e);
+        showToast('알림 미리보기를 열지 못했어요. 앱을 다시 실행해 주세요.');
+    }
 }
 
 function onTopBarStyleChange(checked) {
@@ -1861,6 +2075,7 @@ async function save() {
     data.comci_school_name = document.getElementById('comciSchoolNameInput').value.trim();
     data.comci_school_code = parseInt(document.getElementById('comciSchoolCodeInput').value) || 0;
     data.comci_teacher_number = parseInt(document.getElementById('comciTeacherNumberInput').value) || 0;
+    data.comci_weekly_auto_enabled = document.getElementById('comciWeeklyAutoToggle').checked;
     data.comci_joam_first_grade_fifth_period =
         document.getElementById('comciJoamFirstGradeFifthToggle').checked;
     delete data.short;
@@ -1917,52 +2132,50 @@ function deriveSixPeriodSchedule(baseSchedule) {
         });
 }
 
+function isPersonalOverride(entry) {
+    if (entry?.source === 'manual') return true;
+    if (entry?.source === 'comci') return false;
+    return !!(entry?.name || entry?.room);
+}
+
+function renderComciSyncStatus() {
+    const at = data.comci_last_sync?.at;
+    document.getElementById('comciWeeklyStatus').textContent =
+        (at ? `마지막 갱신: ${new Date(at).toLocaleString()}` : '월요일에 앱이 실행 중이면 주 1회 갱신해요.') +
+        (data.comci_sync_error ? ` · 최근 갱신 실패: ${data.comci_sync_error}` : '');
+}
+
 function renderPersonalList() {
     if (!data.personal) data.personal = {"1":[],"2":[],"3":[],"4":[],"5":[]};
     if (!data.personal[personalDay]) data.personal[personalDay] = [];
     const list = document.getElementById('list-personal');
     const schedule = getPersonalDaySchedule(personalDay);
-
     while (data.personal[personalDay].length < schedule.length)
         data.personal[personalDay].push({name: "", room: ""});
-    if (data.personal[personalDay].length > schedule.length)
-        data.personal[personalDay] = data.personal[personalDay].slice(0, schedule.length);
-
-    list.innerHTML = '';
+    list.replaceChildren();
     schedule.forEach((item, i) => {
         const personal = data.personal[personalDay][i] || {name: "", room: ""};
+        data.personal[personalDay][i] = personal;
         const row = document.createElement('div');
         row.className = 'period-row personal-row';
-        row.innerHTML = `
-            <span class="period-label">${item.name}</span>
-            <input type="text" value="${personal.name || ''}" placeholder="수업명"
-                oninput="data.personal['${personalDay}'][${i}].name=this.value">
-            <input type="text" class="time-input" value="${personal.room || ''}" placeholder="1반"
-                oninput="data.personal['${personalDay}'][${i}].room=this.value">
-        `;
-        list.appendChild(row);
+        const label = document.createElement('span');
+        label.className = 'period-label'; label.textContent = item.name;
+        row.append(label);
+        const keep = document.createElement('input');
+        keep.type = 'checkbox'; keep.checked = isPersonalOverride(personal);
+        keep.style.width = 'auto'; keep.style.justifySelf = 'center';
+        keep.setAttribute('aria-label', `${item.name} 직접 입력 유지`);
+        keep.onchange = () => { personal.source = keep.checked ? 'manual' : 'comci'; };
+        for (const [key, placeholder] of [['name', '수업명'], ['room', '1반']]) {
+            const input = document.createElement('input');
+            input.type = 'text'; input.value = personal[key] || ''; input.placeholder = placeholder;
+            input.setAttribute('aria-label', `${item.name} ${key === 'name' ? '수업명' : '반'}`);
+            if (key === 'room') input.className = 'time-input';
+            input.oninput = () => { personal[key] = input.value; personal.source = 'manual'; keep.checked = true; };
+            row.append(input);
+        }
+        row.append(keep); list.append(row);
     });
-}
-
-function isComciFirstGradeEntry(entry) {
-    return String((entry && entry.room) || '').trim().startsWith('1-');
-}
-
-function getComciEntryForScheduleItem(item, imported) {
-    const name = String((item && item.name) || '');
-    const firstGradeFifth = imported[4] || {};
-    const useJoamRule = !!data.comci_joam_first_grade_fifth_period;
-
-    if (useJoamRule && name.includes('점심') && name.includes('1학년 5교시')) {
-        return isComciFirstGradeEntry(firstGradeFifth) ? firstGradeFifth : {};
-    }
-    if (useJoamRule && name.includes('5교시') && name.includes('1학년 점심')) {
-        return isComciFirstGradeEntry(firstGradeFifth) ? {} : firstGradeFifth;
-    }
-
-    const match = name.match(/^\s*(\d+)교시/);
-    if (!match) return {};
-    return imported[parseInt(match[1]) - 1] || {};
 }
 
 async function importHwpxSchedule() {
@@ -2023,6 +2236,10 @@ async function importComciSchedule() {
 
     button.disabled = true;
     button.textContent = '불러오는 중';
+    const importControls = [...document.querySelectorAll('#panel-personal input, #panel-personal button')];
+    const priorDisabled = importControls.map(control => control.disabled);
+    importControls.forEach(control => { control.disabled = true; });
+    document.getElementById('panel-personal').style.pointerEvents = 'none';
     desc.textContent = '컴시간 최신 시간표를 확인하고 있어요';
 
     try {
@@ -2032,16 +2249,12 @@ async function importComciSchedule() {
         data.comci_school_name = enteredSchoolName;
         data.comci_school_code = schoolCode;
         data.comci_teacher_number = teacherNumber;
-        if (!data.personal) data.personal = {"1":[],"2":[],"3":[],"4":[],"5":[]};
-        [1,2,3,4,5].forEach(day => {
-            const schedule = getPersonalDaySchedule(String(day));
-            const imported = result.personal[String(day)] || [];
-            data.personal[String(day)] = schedule.map(item => {
-                const entry = getComciEntryForScheduleItem(item, imported);
-                return {name: entry.name || "", room: entry.room || ""};
-            });
-        });
-
+        const merged = await window.pywebview.api.merge_comci_schedule(data, result);
+        if (!merged.ok) throw new Error(merged.error || '개인 시간표를 합치지 못했어요.');
+        data.personal = merged.data.personal;
+        data.comci_last_sync = merged.data.comci_last_sync;
+        data.comci_sync_error = '';
+        renderComciSyncStatus();
         renderPersonalList();
         const displaySchoolName = enteredSchoolName ||
             (result.school_name_hidden ? `학교코드 ${result.school_code}` : result.school_name);
@@ -2051,6 +2264,8 @@ async function importComciSchedule() {
         desc.textContent = e.message || '시간표를 불러오지 못했습니다.';
         showToast('컴시간 시간표를 불러오지 못했어요');
     } finally {
+        document.getElementById('panel-personal').style.pointerEvents = '';
+        importControls.forEach((control, i) => { control.disabled = priorDisabled[i]; });
         button.disabled = false;
         button.textContent = '이번 주 불러오기';
     }

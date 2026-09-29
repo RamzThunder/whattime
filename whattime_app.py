@@ -10,9 +10,14 @@ import datetime
 import hashlib
 import subprocess
 import tempfile
+import time
+from schedule_documents import parse_hwpx_schedule
+from desktop_reminders import ReminderEngine, current_lesson, input_idle_seconds
+from school_schedules import DEFAULT_SOURCE, SubscriptionStore, atomic_json
+from personal_timetable import apply_comci_result, comci_target, comci_weekly_due
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '2.2.4'
+APP_VERSION = '3.0.0'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -49,12 +54,15 @@ USER_DEFAULT_PATH  = os.path.join(data_dir, 'user_default.json')
 PROGRESS_PATH      = os.path.join(data_dir, 'lesson_progress.json')
 PROGRESS_IMAGE_DIR = os.path.join(data_dir, 'lesson_progress_images')
 PROGRESS_LOCK      = threading.RLock()
+SCHEDULE_LOCK      = threading.RLock()
 MAIN_HTML          = os.path.join(base_dir, 'whattime.html')
 SETTINGS_HTML      = os.path.join(base_dir, 'settings.html')
 PROGRESS_HTML      = os.path.join(base_dir, 'progress_popup.html')
 PROGRESS_HISTORY_HTML = os.path.join(base_dir, 'progress_history.html')
 LESSON_END_HTML    = os.path.join(base_dir, 'lesson_end.html')
 POWERPOINT_CONFIRM_HTML = os.path.join(base_dir, 'powerpoint_confirm.html')
+DESKTOP_REMINDER_HTML = os.path.join(base_dir, 'desktop_reminder.html')
+subscriptions = SubscriptionStore(os.path.join(data_dir, 'school_subscription.json'), fixed_source=DEFAULT_SOURCE)
 
 WEBVIEW_STORAGE_PATH = None
 if not IS_MAC:
@@ -147,13 +155,15 @@ DEFAULT_SCHEDULE = {
     ],
     "special": [],
     "special_schedules": [],
-    "special_schedule_enabled": False,
+    "special_schedule_enabled": True,
+    "desktop_mode_enabled": False,
     "special_schedule_opt_in_version": 1,
     "seven_period_days": [1, 2, 4],
     "special_dates": [],
     "rest_days": [0, 6],
     "rest_schedules": {"0": [], "1": [], "2": [], "3": [], "4": [], "5": [], "6": []},
     "personal": {"1": [], "2": [], "3": [], "4": [], "5": []},
+    "comci_weekly_auto_enabled": True,
     "comci_school_name": "",
     "comci_school_code": None,
     "comci_teacher_number": None,
@@ -333,139 +343,6 @@ def fetch_comci_teacher_schedule(school_code=DEFAULT_COMCI_SCHOOL_CODE, teacher_
         'personal': personal,
     }
 
-def _xml_local_name(tag):
-    return str(tag).rsplit('}', 1)[-1]
-
-def _hwpx_element_text(element):
-    pieces = []
-    for node in element.iter():
-        if _xml_local_name(node.tag) == 't' and node.text:
-            text = ' '.join(node.text.split())
-            if text:
-                pieces.append(text)
-    return ' '.join(pieces).strip()
-
-def _hwpx_table_rows(root):
-    tables = []
-    for table in root.iter():
-        if _xml_local_name(table.tag) != 'tbl':
-            continue
-        rows = []
-        for row in table.iter():
-            if _xml_local_name(row.tag) != 'tr':
-                continue
-            cells = [
-                _hwpx_element_text(cell)
-                for cell in row.iter()
-                if _xml_local_name(cell.tag) == 'tc'
-            ]
-            cells = [cell for cell in cells if cell]
-            if cells:
-                rows.append(cells)
-        if rows:
-            tables.append(rows)
-    return tables
-
-def _schedule_entry_from_hwpx_row(cells, fallback_period):
-    import re
-    time_pattern = re.compile(r'(?<!\d)([01]?\d|2[0-3])\s*[:：]\s*([0-5]\d)(?!\d)')
-    joined = ' | '.join(cells)
-    matches = list(time_pattern.finditer(joined))
-    if len(matches) < 2:
-        return None
-
-    start_hour, start_minute = map(int, matches[0].groups())
-    end_hour, end_minute = map(int, matches[1].groups())
-    start_total = start_hour * 60 + start_minute
-    end_total = end_hour * 60 + end_minute
-    if end_total <= start_total or end_total - start_total > 180:
-        return None
-
-    label_candidates = []
-    for cell in cells:
-        without_times = time_pattern.sub(' ', cell)
-        without_times = re.sub(r'\b\d+\s*분\b', ' ', without_times)
-        cleaned = re.sub(r'[~∼〜～\-–—:：|()\[\]]+', ' ', without_times)
-        cleaned = ' '.join(cleaned.split()).strip()
-        if cleaned:
-            label_candidates.append(cleaned)
-
-    label = ''
-    for candidate in label_candidates:
-        if re.search(r'\d+\s*교시|점심|조회|종례|청소|수업|행사|활동', candidate):
-            label = candidate
-            break
-    if not label and label_candidates:
-        label = label_candidates[0]
-    if re.fullmatch(r'\d+', label):
-        label += '교시'
-    if not label or label in ('구분', '시간', '시정', '일정'):
-        label = f'{fallback_period}교시'
-
-    return {
-        'name': label,
-        'start': f'{start_hour:02d}:{start_minute:02d}',
-        'end': f'{end_hour:02d}:{end_minute:02d}',
-    }
-
-def _schedule_from_hwpx_rows(rows):
-    schedule = []
-    seen = set()
-    for cells in rows:
-        entry = _schedule_entry_from_hwpx_row(cells, len(schedule) + 1)
-        if not entry:
-            continue
-        key = (entry['name'], entry['start'], entry['end'])
-        if key in seen:
-            continue
-        seen.add(key)
-        schedule.append(entry)
-    return schedule
-
-def parse_hwpx_schedule(path):
-    import zipfile
-    import xml.etree.ElementTree as ET
-
-    if not str(path).lower().endswith('.hwpx'):
-        raise ValueError('HWPX 파일을 선택해 주세요.')
-    if os.path.getsize(path) > 50 * 1024 * 1024:
-        raise ValueError('HWPX 파일이 너무 큽니다. 50MB 이하 파일을 선택해 주세요.')
-
-    tables = []
-    paragraph_rows = []
-    total_xml_size = 0
-    try:
-        with zipfile.ZipFile(path, 'r') as archive:
-            section_names = sorted(
-                name for name in archive.namelist()
-                if name.startswith('Contents/section') and name.lower().endswith('.xml')
-            )
-            if not section_names:
-                raise ValueError('HWPX 본문을 찾을 수 없습니다.')
-            for name in section_names:
-                info = archive.getinfo(name)
-                total_xml_size += info.file_size
-                if total_xml_size > 20 * 1024 * 1024:
-                    raise ValueError('HWPX 본문이 너무 큽니다.')
-                root = ET.fromstring(archive.read(name))
-                tables.extend(_hwpx_table_rows(root))
-                for paragraph in root.iter():
-                    if _xml_local_name(paragraph.tag) == 'p':
-                        text = _hwpx_element_text(paragraph)
-                        if text:
-                            paragraph_rows.append([text])
-    except zipfile.BadZipFile:
-        raise ValueError('올바른 HWPX 파일이 아닙니다.')
-    except ET.ParseError:
-        raise ValueError('HWPX 본문 XML을 읽을 수 없습니다.')
-
-    candidates = [_schedule_from_hwpx_rows(rows) for rows in tables]
-    candidates = [schedule for schedule in candidates if schedule]
-    schedule = max(candidates, key=len) if candidates else _schedule_from_hwpx_rows(paragraph_rows)
-    if len(schedule) < 2:
-        raise ValueError('교시명과 시작·종료 시각이 있는 시정표를 찾지 못했습니다.')
-    return schedule
-
 def _fetch_latest_release():
     import urllib.request, json
     try:
@@ -563,17 +440,20 @@ def migrate_schedule(data):
     return migrated
 
 def load_schedule():
-    if os.path.exists(SCHEDULE_PATH):
-        try:
-            with open(SCHEDULE_PATH, 'r', encoding='utf-8') as f:
-                return migrate_schedule(json.load(f))
-        except:
-            pass
-    return copy.deepcopy(DEFAULT_SCHEDULE)
+    with SCHEDULE_LOCK:
+        if os.path.exists(SCHEDULE_PATH):
+            try:
+                with open(SCHEDULE_PATH, 'r', encoding='utf-8') as f:
+                    return migrate_schedule(json.load(f))
+            except (OSError, ValueError):
+                pass
+        return copy.deepcopy(DEFAULT_SCHEDULE)
 
 def save_schedule(data):
-    with open(SCHEDULE_PATH, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    with SCHEDULE_LOCK:
+        data = dict(data)
+        data.pop('subscribed_school', None)
+        atomic_json(SCHEDULE_PATH, data)
 
 def _load_progress():
     if os.path.exists(PROGRESS_PATH):
@@ -680,6 +560,122 @@ class Api:
         self._settings_opening = False
         self._startup_enabled_result = None
         self._update_results = {}
+        self._comci_sync_lock = threading.Lock()
+        self._desktop_engine = ReminderEngine()
+        self._desktop_stop = threading.Event()
+        self._desktop_started = False
+        self._desktop_error = ''
+        self._desktop_payload = None
+        self.desktop_reminder_window = None
+
+    def start_desktop_reminders(self):
+        if self._desktop_started:
+            return
+        self._desktop_started = True
+        def monitor():
+            while not self._desktop_stop.is_set():
+                try:
+                    data = load_schedule()
+                    enabled = data.get('desktop_mode_enabled') is True
+                    lesson = current_lesson(data, subscriptions.active_school(), datetime.datetime.now()) if enabled else None
+                    payload = self._desktop_payload
+                    if payload and not payload.get('preview') and (not lesson or payload['id'] != lesson['id']):
+                        self.close_desktop_reminder()
+                    idle = None
+                    if lesson and time.time() >= lesson['start_ts'] + 20:
+                        try:
+                            idle = input_idle_seconds()
+                            self._desktop_error = ''
+                        except Exception:
+                            self._desktop_error = '입력 상태를 확인하지 못해 재알림을 사용할 수 없어요. 시작 알림은 계속 표시해요.'
+                    notification = self._desktop_engine.tick(lesson, time.time(), idle) if enabled else None
+                    if notification:
+                        self._show_desktop_reminder(notification)
+                except Exception:
+                    self._desktop_error = '수업 알림을 확인하지 못했어요. 시정과 개인 시간표를 확인하세요.'
+                self._desktop_stop.wait(1)
+        threading.Thread(target=monitor, daemon=True).start()
+
+    def _show_desktop_reminder(self, payload):
+        if not payload.get('preview') and self._desktop_engine.is_muted(payload['id']):
+            return
+        payload = dict(payload)
+        raw_text = payload.get('text', load_schedule().get('desktop_reminder_text', {}))
+        raw_text = raw_text if isinstance(raw_text, dict) else {}
+        payload['text'] = {key: value.strip()[:limit] for key, limit in
+                           [('start_title', 80), ('urgent_title', 80), ('button_label', 24)]
+                           for value in [raw_text.get(key)] if isinstance(value, str)}
+        for key in ('start_background', 'start_foreground', 'urgent_background', 'urgent_foreground'):
+            value = raw_text.get(key)
+            if isinstance(value, str) and re.fullmatch(r'#[0-9a-fA-F]{6}', value):
+                payload['text'][key] = value
+        for kind in ('start', 'urgent'):
+            value = raw_text.get(kind + '_image')
+            if (isinstance(value, str) and len(value) <= 2000000
+                    and re.fullmatch(r'data:image/jpeg;base64,[A-Za-z0-9+/]+={0,2}', value)):
+                payload['text'][kind + '_image'] = value
+            dim = raw_text.get(kind + '_dim', 40)
+            if isinstance(dim, (int, float)) and 0 <= dim <= 80:
+                payload['text'][kind + '_dim'] = dim
+        self._desktop_payload = payload
+        urgent = payload['level'] == 'urgent'
+        width, height = (880, 620) if urgent else (680, 480)
+        x = y = None
+        try:
+            screens = webview.screens
+            screen = next((screen for screen in screens if screen.x <= main_window.x < screen.x + screen.width
+                           and screen.y <= main_window.y < screen.y + screen.height), screens[0])
+            width, height = min(width, screen.width - 40), min(height, screen.height - 80)
+            x, y = screen.x + (screen.width - width) // 2, screen.y + (screen.height - height) // 2
+        except Exception:
+            pass
+        window = self.desktop_reminder_window
+        if window is not None and window in webview.windows:
+            window.resize(width, height)
+            if x is not None:
+                window.move(x, y)
+            window.on_top = True
+            window.show()
+            window.restore()
+            window.evaluate_js('renderReminder(' + json.dumps(payload, ensure_ascii=False) + ')')
+            return
+        window = webview.create_window(
+            title='수업 가세요!' if urgent else '수업 시작 알림', url=DESKTOP_REMINDER_HTML,
+            width=width, height=height, x=x, y=y, min_size=(360, 280), resizable=True,
+            on_top=True, focus=True, background_color=payload['text'].get('urgent_background' if urgent else 'start_background',
+                                                     '#b91226' if urgent else '#eef4ff'), js_api=self)
+        self.desktop_reminder_window = window
+        def closed():
+            if self.desktop_reminder_window is window:
+                current = self._desktop_payload
+                if current and not current.get('preview'):
+                    self._desktop_engine.dismiss(current['id'], time.time())
+                self.desktop_reminder_window = None
+                self._desktop_payload = None
+        window.events.closed += closed
+
+    def get_desktop_reminder(self):
+        return self._desktop_payload or {}
+
+    def get_desktop_reminder_status(self):
+        return {'error': self._desktop_error}
+
+    def close_desktop_reminder(self, mute=False):
+        payload, window = self._desktop_payload, self.desktop_reminder_window
+        if payload and not payload.get('preview'):
+            self._desktop_engine.dismiss(payload['id'], time.time(), bool(mute))
+        self._desktop_payload = None
+        self.desktop_reminder_window = None
+        if window is not None:
+            threading.Timer(0.05, window.destroy).start()
+        return True
+
+    def preview_desktop_reminder(self, urgent=False, text=None):
+        self._show_desktop_reminder({'id': 'preview', 'class_name': '2-3', 'subject': '예시 수업',
+                                    'period': '1교시', 'start': '08:40', 'end': '09:25',
+                                    'level': 'urgent' if urgent else 'start', 'elapsed_seconds': 20,
+                                    'preview': True, 'text': text if isinstance(text, dict) else load_schedule().get('desktop_reminder_text', {})})
+        return True
 
     def toggle_on_top(self, is_pinned):
         self._pinned = is_pinned
@@ -1087,12 +1083,40 @@ class Api:
         return {'started': True}
 
     def get_schedule(self):
-        return load_schedule()
+        data = load_schedule()
+        data['subscribed_school'] = subscriptions.active_school()
+        return data
+
+    def get_school_subscription(self):
+        return subscriptions.snapshot()
+
+    def check_school_subscription(self):
+        return subscriptions.check()
+
+    def accept_school_subscription(self, proposal_id):
+        state = subscriptions.accept(proposal_id)
+        threading.Timer(0.05, lambda: main_window.evaluate_js('reloadSchedule()')).start()
+        return state
+
+    def decline_school_subscription(self, proposal_id):
+        return subscriptions.decline(proposal_id)
+
+    def select_school_subscription(self, school_id):
+        state = subscriptions.select(school_id)
+        main_window.evaluate_js('reloadSchedule()')
+        return state
 
     def save_schedule(self, data):
-        save_schedule(data)
+        with SCHEDULE_LOCK:
+            before = load_schedule()
+            recheck_comci = (comci_target(before) != comci_target(data) or
+                             before.get('comci_weekly_auto_enabled', True) != data.get('comci_weekly_auto_enabled', True))
+            save_schedule(data)
         def _do():
-            main_window.evaluate_js('reloadSchedule()')
+            if recheck_comci:
+                main_window.evaluate_js('comciCheckedDate = null; reloadSchedule(); checkWeeklyComci();')
+            else:
+                main_window.evaluate_js('reloadSchedule()')
         threading.Timer(0.05, _do).start()
         return True
 
@@ -1242,6 +1266,43 @@ class Api:
             return {'ok': True, 'image_data_url': 'data:image/png;base64,' + encoded}
         except Exception as e:
             return {'ok': False, 'error': str(e)}
+
+    def merge_comci_schedule(self, data, result):
+        try:
+            return {'ok': True, 'data': apply_comci_result(data, result)}
+        except Exception as error:
+            return {'ok': False, 'error': str(error)}
+
+    def sync_weekly_comci(self):
+        if not self._comci_sync_lock.acquire(blocking=False):
+            return {'ok': True, 'deferred': True}
+        try:
+            before = load_schedule()
+            if not comci_weekly_due(before):
+                return {'ok': True, 'updated': False}
+            # Do not replace a settings form that the user is currently editing.
+            if self.settings_window or self._settings_opening:
+                return {'ok': True, 'deferred': True}
+            target = comci_target(before)
+            try:
+                result = fetch_comci_teacher_schedule(*target)
+                with SCHEDULE_LOCK:
+                    latest = load_schedule()
+                    if self.settings_window or self._settings_opening or comci_target(latest) != target:
+                        return {'ok': True, 'deferred': True}
+                    if not comci_weekly_due(latest):
+                        return {'ok': True, 'updated': False}
+                    save_schedule(apply_comci_result(latest, result))
+                return {'ok': True, 'updated': True}
+            except Exception as error:
+                with SCHEDULE_LOCK:
+                    latest = load_schedule()
+                    if not self.settings_window and not self._settings_opening and comci_target(latest) == target:
+                        latest['comci_sync_error'] = str(error)
+                        save_schedule(latest)
+                return {'ok': False, 'error': str(error)}
+        finally:
+            self._comci_sync_lock.release()
 
     def fetch_comci_schedule(self, school_code, teacher_number):
         try:
@@ -1621,6 +1682,9 @@ main_window = webview.create_window(
     y=30,
     js_api=api,
 )
+
+main_window.events.loaded += api.start_desktop_reminders
+main_window.events.closed += api._desktop_stop.set
 
 # ─────────────────────────────────────────
 # Windows: minimize→restore 후 투명도 복구

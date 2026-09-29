@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>특별시정 관리자</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#202624;background:#f4f6f5;font-size:14px}
+*{box-sizing:border-box}body{margin:0;padding:28px;max-width:1200px;margin:auto}h1{font-size:25px;margin:0 0 8px}h2{font-size:18px;margin:0 0 16px}p{line-height:1.6}.muted{color:#5d6a63}section{background:white;border:1px solid #dfe6e1;border-radius:14px;padding:20px;margin:18px 0}.row{display:flex;gap:12px;align-items:end;flex-wrap:wrap}label{display:flex;flex-direction:column;gap:6px;flex:1}input,select,button{font:inherit;border-radius:7px;padding:9px 11px;border:1px solid #bdc9c0;background:white}input,select{width:100%;min-width:0}button{cursor:pointer;white-space:nowrap}button.primary{background:#1b6749;color:white;border-color:#1b6749}button.danger{color:#a12c26}button:disabled{opacity:.45;cursor:wait}.columns{display:grid;grid-template-columns:240px 1fr;gap:20px}#events{display:flex;flex-direction:column;gap:8px;margin-top:14px}#events button{text-align:left;white-space:normal;line-height:1.5}#events button.active{border-color:#1b6749;background:#edf7f0}table{width:100%;border-collapse:collapse;margin:16px 0}td,th{padding:5px;text-align:left}th{font-weight:500;color:#5d6a63}td:first-child{width:38%}td input[type=checkbox]{width:auto}#status{white-space:pre-wrap;border-left:3px solid #1b6749;padding:10px 14px;min-height:40px}dialog{border:1px solid #bdc9c0;border-radius:16px;max-width:700px;width:90%}dialog::backdrop{background:#0006}#reviewText{white-space:pre-wrap;max-height:400px;overflow:auto;line-height:1.6}fieldset{border:0;padding:0;margin:0;min-width:0}summary{cursor:pointer}.small{font-size:12px}
+</style>
+</head>
+<body>
+<h1>학교 특별시정 게시</h1>
+<p class="muted">학교와 날짜를 선택해 시정을 편집하세요. 게시하면 해당 학교를 구독하는 앱에 반영돼요.</p>
+<section>
+<h2>게시 저장소</h2>
+<div class="row">
+<label>GitHub 저장소<input id="repository" value="RamzThunder/whattime-releases" autocomplete="off"></label>
+<label style="flex:.4">브랜치<input id="branch" value="main" autocomplete="off"></label>
+<label>파일 경로<input id="path" value="schedules.json" autocomplete="off"></label>
+</div>
+<div class="row" style="margin-top:12px">
+<label>GitHub 토큰<input id="token" type="password" placeholder="선택한 저장소의 Contents 쓰기 권한" autocomplete="off" spellcheck="false"></label>
+<button id="saveTokenButton" onclick="saveToken()">토큰 저장</button>
+<button id="deleteTokenButton" onclick="deleteToken()" disabled>저장 삭제</button>
+<button id="loadButton" onclick="loadFeed()">게시 내용 불러오기</button>
+</div>
+<p id="tokenStatus" class="muted small" role="status">저장한 토큰은 다음 실행부터 자동으로 사용해요.</p>
+<p class="muted small">토큰은 이 컴퓨터의 OS 자격 증명 저장소에 보관해요. 공개 파일에는 학교별 날짜·시정만 포함돼요.</p>
+</section>
+<p id="status" role="status" aria-live="polite">먼저 게시 내용을 불러오세요.</p>
+<fieldset id="editor" disabled>
+<section>
+<div class="row">
+<label>학교<select id="school" onchange="switchSchool()"></select></label>
+<button onclick="newSchool()">학교 추가</button>
+<button class="danger" onclick="deleteSchool()">학교 삭제</button>
+</div>
+<div class="row" style="margin-top:12px">
+<label>학교 ID<input id="schoolId" readonly></label>
+<label>학교 이름<input id="schoolName" oninput="renameSchool()" maxlength="100"></label>
+</div>
+</section>
+<section class="columns">
+<div><h2>적용 날짜</h2><button onclick="newEvent()">+ 날짜 추가</button><div id="events"></div></div>
+<div id="eventEditor" hidden>
+<div class="row"><label>적용 날짜<input id="eventDate" type="date" onchange="editEvent()"></label><label>제목<input id="eventTitle" placeholder="예: 중간고사 단축시정" maxlength="100" oninput="editEvent()"></label></div>
+<table><thead><tr><th>교시 이름</th><th>시작 (24시)</th><th>종료 (24시)</th><th>카운트다운 제외</th><th></th></tr></thead><tbody id="periods"></tbody></table>
+<div class="row"><button onclick="importDocument()">HWP·HWPX에서 불러오기</button><button onclick="addPeriod()">+ 교시 추가</button><button onclick="duplicateEvent()">다른 날짜로 복사</button><button class="danger" onclick="deleteEvent()">이 날짜 삭제</button></div>
+<p id="firstRowHint" class="muted small">직접 작성할 때 첫 일정은 ‘아침활동 및 학급조회’, 시작은 08:20으로 고정돼요. 파일에서 불러오면 첫 행도 자유롭게 편집할 수 있어요. 종료 시각은 변경할 수 있어요. 시각은 24시간제로 입력하세요 (예: 13:20). 날짜를 삭제해 게시하면 해당 특별시정이 취소돼요.</p>
+</div>
+</section>
+<button id="reviewButton" class="primary" onclick="reviewPublish()">변경 내용 확인 · 게시</button>
+<p class="muted">사용자 앱은 시작할 때 변경을 확인하고, 사용자가 받아오기를 선택하면 적용해요. GitHub 캐시와 연결 상태에 따라 확인이 늦어질 수 있어요.</p>
+</fieldset>
+<dialog id="review"><h2>게시할 내용 확인</h2><p>아래 내용으로 공개 시정 파일 전체를 갱신합니다. 삭제한 날짜는 구독자의 다음 수신 때 취소됩니다.</p><div id="reviewText"></div><div class="row" style="margin-top:16px"><button onclick="document.getElementById('review').close()">돌아가기</button><button id="publishButton" class="primary" onclick="publishFeed()">GitHub에 게시</button></div></dialog>
+<script>
+let feed = {version:1, schools:[]}, baseline = null, schoolIndex = -1, eventIndex = -1, dirty = false, loadedSource = null;
+const $ = id => document.getElementById(id);
+let hasSavedToken = false;
+function showCredentialState(result) {
+    if (!result.ok) { $('tokenStatus').textContent = result.error; return; }
+    hasSavedToken = result.saved;
+    $('token').placeholder = hasSavedToken ? '저장된 토큰 사용 중 · 변경하려면 새 토큰 입력' : '선택한 저장소의 Contents 쓰기 권한';
+    $('deleteTokenButton').disabled = !hasSavedToken;
+    $('tokenStatus').textContent = hasSavedToken ? '토큰이 저장되어 있어요. 다음 실행에도 자동으로 사용해요.' : '저장한 토큰은 다음 실행부터 자동으로 사용해요.';
+}
+async function saveToken() {
+    const token = $('token').value.trim();
+    if (!token) { $('tokenStatus').textContent = '저장할 토큰을 입력하세요.'; return; }
+    busy(true);
+    try { const result = await window.pywebview.api.save_token(token); showCredentialState(result); if (result.ok) $('token').value = ''; }
+    catch(e) { $('tokenStatus').textContent = '토큰을 저장하지 못했어요. 다시 시도하세요.'; }
+    finally { busy(false); }
+}
+async function deleteToken() {
+    busy(true);
+    try { const result = await window.pywebview.api.delete_token(); showCredentialState(result); if (result.ok) $('token').value = ''; }
+    catch(e) { $('tokenStatus').textContent = '토큰을 삭제하지 못했어요. 다시 시도하세요.'; }
+    finally { busy(false); }
+}
+window.addEventListener('pywebviewready', async () => {
+    try { showCredentialState(await window.pywebview.api.credential_status()); }
+    catch(e) { $('tokenStatus').textContent = '저장된 토큰을 읽지 못했어요. 직접 입력할 수 있어요.'; }
+});
+const source = () => ({repository:$('repository').value.trim(), branch:$('branch').value.trim(), path:$('path').value.trim()});
+const school = () => feed.schools[schoolIndex];
+const event = () => school()?.events[eventIndex];
+function status(message){ $('status').textContent = message; }
+function changed(){dirty=true;status('아직 게시하지 않은 변경 사항이 있어요. 아래에서 확인 후 게시하세요.');}
+function busy(value){$('editor').disabled=value || !loadedSource;$('loadButton').disabled=value;for(const id of ['repository','branch','path','token','saveTokenButton']) $(id).disabled=value;$('deleteTokenButton').disabled=value || !hasSavedToken;}
+async function loadFeed(){
+    if(dirty && !confirm('게시하지 않은 변경을 버리고 다시 불러올까요?')) return;
+    busy(true);status('게시 내용을 불러오고 있어요…');
+    try{
+        const selected=source();
+        const result=await window.pywebview.api.load(selected,$('token').value);
+        if(!result.ok) throw new Error(result.error);
+        feed=result.feed;baseline=JSON.parse(JSON.stringify(feed));loadedSource=selected;dirty=false;schoolIndex=feed.schools.length?0:-1;eventIndex=-1;renderSchools();
+        status(feed.schools.length?'게시 내용을 불러왔어요. 편집 후 게시하세요.':'등록된 학교가 없어요. 학교를 추가해 첫 시정을 게시하세요.');
+    }catch(e){loadedSource=null;status(e.message || '불러오지 못했어요.');}
+    finally{busy(false);}
+}
+function renderSchools(){
+    $('school').replaceChildren();feed.schools.forEach((s,i)=>$('school').add(new Option(s.name,String(i))));
+    $('school').value=String(schoolIndex);$('schoolId').value=school()?.id||'';$('schoolName').value=school()?.name||'';
+    $('schoolName').disabled=!school();renderEvents();
+}
+function switchSchool(){schoolIndex=Number($('school').value);eventIndex=-1;renderSchools();}
+function newSchool(){
+    const id=prompt('학교 ID를 입력하세요. 한 번 정한 ID는 구독을 위해 유지하세요.\n예: joam (영문·숫자·밑줄·하이픈)');if(id===null)return;
+    if(!/^[a-zA-Z0-9_-]{1,100}$/.test(id)||feed.schools.some(s=>s.id===id)){alert('중복되지 않는 올바른 학교 ID를 입력하세요.');return;}
+    const name=prompt('학교 이름을 입력하세요.');if(!name?.trim())return;
+    feed.schools.push({id,name:name.trim(),events:[]});schoolIndex=feed.schools.length-1;eventIndex=-1;changed();renderSchools();
+}
+function deleteSchool(){if(!school()||!confirm(`${school().name}과 등록된 시정을 삭제할까요? 게시 후 구독자에게 더 이상 적용되지 않아요.`))return;feed.schools.splice(schoolIndex,1);schoolIndex=feed.schools.length?0:-1;eventIndex=-1;changed();renderSchools();}
+function renameSchool(){if(!school())return;school().name=$('schoolName').value;const option=$('school').options[schoolIndex];if(option)option.text=school().name;changed();}
+function renderEvents(){
+    $('events').replaceChildren();(school()?.events||[]).forEach((e,i)=>{const b=document.createElement('button');b.textContent=`${e.date || '날짜 선택 필요'}\n${e.title}`;b.className=i===eventIndex?'active':'';b.onclick=()=>{eventIndex=i;ensureMorning();renderEvents();};$('events').append(b);});
+    $('eventEditor').hidden=!event();if(!event())return;
+    $('eventDate').value=event().date;$('eventTitle').value=event().title;renderPeriods();
+}
+const MORNING_NAME = '아침활동 및 학급조회';
+function morningPeriod(end = '08:40') { return {name:MORNING_NAME,start:'08:20',end,no_countdown:false}; }
+function ensureMorning() {
+    if (!event() || event().preserve_first_row) return;
+    const first = event().periods[0];
+    if (first?.name === MORNING_NAME) {
+        if (first.start !== '08:20') { first.start = '08:20'; changed(); }
+        return;
+    }
+    const end = first?.start > '08:20' ? first.start : '08:40';
+    event().periods.unshift(morningPeriod(end));
+    changed();
+}
+function newEvent(){
+    if(!school()){alert('먼저 학교를 추가하세요.');return;}
+    school().events.push({date:'',title:'특별시정',periods:[morningPeriod(),{name:'1교시',start:'08:40',end:'09:25',no_countdown:false}]});
+    eventIndex=school().events.length-1;changed();renderEvents();
+}
+function editEvent(){if(!event())return;event().date=$('eventDate').value;event().title=$('eventTitle').value;const b=$('events').children[eventIndex];if(b)b.textContent=`${event().date || '날짜 선택 필요'}\n${event().title}`;changed();}
+function duplicateEvent(){if(!event())return;ensureMorning();const e=JSON.parse(JSON.stringify(event()));e.date='';school().events.push(e);eventIndex=school().events.length-1;changed();renderEvents();}
+function deleteEvent(){if(!event()||!confirm('이 날짜의 특별시정을 삭제할까요?'))return;school().events.splice(eventIndex,1);eventIndex=-1;changed();renderEvents();}
+function normalizeTime24(value) {
+    const text = value.trim();
+    const match = text.match(/^(\d{1,2}):(\d{2})$/) || text.match(/^(\d{1,2})(\d{2})$/);
+    if (!match || Number(match[1]) > 23 || Number(match[2]) > 59) return text;
+    return `${match[1].padStart(2,'0')}:${match[2]}`;
+}
+function renderPeriods(){
+    $('periods').replaceChildren();event().periods.forEach((p,i)=>{const row=document.createElement('tr');
+        const isMorning = !event().preserve_first_row && i === 0 && p.name === MORNING_NAME;
+        for(const key of ['name','start','end','no_countdown']){
+            const td=document.createElement('td'),input=document.createElement('input');
+            const isTime = key==='start' || key==='end';
+            input.type=key==='no_countdown'?'checkbox':'text';
+            input.setAttribute('aria-label',`${i+1}번째 ${key}`);
+            if(input.type==='checkbox')input.checked=p[key]===true;else input.value=p[key];
+            if(isMorning && (key==='name' || key==='start')) input.readOnly=true;
+            if(isTime){
+                input.placeholder='HH:MM';input.inputMode='numeric';input.maxLength=5;
+                input.pattern='(?:[01][0-9]|2[0-3]):[0-5][0-9]';
+                input.title='24시간제 시각 (예: 08:20, 13:20)';
+                input.style.fontVariantNumeric='tabular-nums';
+                input.onblur=()=>{const formatted=normalizeTime24(input.value);if(formatted!==input.value){input.value=formatted;p[key]=formatted;changed();}};
+            }
+            input.oninput=()=>{p[key]=input.type==='checkbox'?input.checked:input.value;changed();};td.append(input);row.append(td);
+        }
+        const td=document.createElement('td'),button=document.createElement('button');
+        button.textContent='삭제';button.disabled=isMorning;
+        button.onclick=()=>{event().periods.splice(i,1);changed();renderPeriods();};
+        td.append(button);row.append(td);$('periods').append(row);
+    });
+}
+async function importDocument(){
+    const target = event();
+    if (!target) return;
+    busy(true);status('문서에서 시정표를 찾고 있어요…');
+    try {
+        const result = await window.pywebview.api.import_schedule_document();
+        if (result.cancelled) { status('불러오기를 취소했어요. 기존 시정은 유지돼요.'); return; }
+        if (!result.ok) { status(result.error); return; }
+        if (event() !== target) { status('선택한 날짜가 바뀌었어요. 다시 불러오세요.'); return; }
+        if (!confirm(`${result.filename}에서 ${result.periods.length}개 일정을 찾았어요. 현재 날짜의 시정을 바꿀까요?`)) {
+            status('기존 시정을 유지했어요.'); return;
+        }
+        target.periods = result.periods;
+        target.preserve_first_row = true;
+        changed();renderPeriods();
+        status(`${result.filename}에서 ${result.periods.length}개 일정을 불러왔어요. 첫 행도 자유롭게 수정할 수 있어요. 교시명·시각·적용 날짜를 확인한 뒤 게시하세요.`);
+    } catch(e) { status('문서를 불러오지 못했어요. 관리자 도구를 다시 실행한 뒤 시도하세요.'); }
+    finally { busy(false); }
+}
+function addPeriod(){
+    if(!event())return;
+    ensureMorning();
+    const next = Math.max(0,...event().periods.map(p=>Number(p.name.match(/^(\d+)교시$/)?.[1] || 0)))+1;
+    event().periods.push({name:`${next}교시`,start:'',end:'',no_countdown:false});changed();renderPeriods();
+}
+async function reviewPublish(){
+    if(JSON.stringify(source())!==JSON.stringify(loadedSource)){status('저장소 주소가 바뀌었어요. 게시 내용을 다시 불러오세요.');return;}
+    if(!$('token').value.trim() && !hasSavedToken){status('GitHub 토큰을 입력하거나 저장하세요.');return;}
+    busy(true);
+    try{
+        const result=await window.pywebview.api.validate(feed);if(!result.ok){status(result.error);return;}
+        feed=result.feed;schoolIndex=feed.schools.length?Math.min(schoolIndex,feed.schools.length-1):-1;eventIndex=-1;renderSchools();
+        const lines=[`저장소: ${loadedSource.repository} / ${loadedSource.branch} / ${loadedSource.path}`,''];
+        for(const old of baseline.schools){const s=feed.schools.find(s=>s.id===old.id);if(!s)lines.push(`삭제: ${old.name} (학교 전체)`);else for(const e of old.events)if(!s.events.some(n=>n.date===e.date))lines.push(`취소: ${old.name} · ${e.date} · ${e.title}`);}
+        for(const s of feed.schools){lines.push(`\n${s.name} (${s.id})`);if(!s.events.length)lines.push('  등록된 특별시정 없음');for(const e of s.events){lines.push(`  ${e.date} · ${e.title}`);for(const p of e.periods)lines.push(`    ${p.start}–${p.end} ${p.name}${p.no_countdown?' (카운트다운 제외)':''}`);}}
+        $('reviewText').textContent=lines.join('\n');$('review').showModal();
+    }catch(e){status('게시 내용을 확인하지 못했어요.');}finally{busy(false);}
+}
+async function publishFeed(){
+    $('publishButton').disabled=true;busy(true);status('GitHub에 게시하고 있어요…');
+    try{
+        const result=await window.pywebview.api.publish(loadedSource,$('token').value,feed);
+        if(!result.ok)throw new Error(result.error);
+        dirty=false;baseline=JSON.parse(JSON.stringify(feed));status(`게시했어요. 구독 앱을 시작한 사용자가 받아오기를 선택하면 반영돼요.\n${result.url}`);
+    }catch(e){status(e.message || '게시하지 못했어요.');}
+    finally{$('review').close();$('publishButton').disabled=false;busy(false);}
+}
+window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue='';}});
+</script>
+</body></html>

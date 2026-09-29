@@ -7,7 +7,27 @@ on:
   workflow_dispatch:  # 수동 실행도 가능
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install document parser
+        run: pip install olefile==0.47
+      - name: Verify school subscriptions
+        run: |
+          python -m unittest discover -s tests -v
+          node tests/test_subscription_widget.js
+          node tests/test_admin_editor.js
+          node tests/test_desktop_reminder_view.js
+
   build-mac:
+    needs: test
     runs-on: macos-latest
     permissions:
       contents: write
@@ -23,7 +43,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pyinstaller pywebview bottle pillow certifi
+          pip install pyinstaller pywebview bottle pillow certifi keyring olefile==0.47
 
       - name: Build .app with PyInstaller
         run: |
@@ -56,6 +76,7 @@ jobs:
           path: dist/WhatTime-mac.dmg
 
   build-win:
+    needs: test
     runs-on: windows-latest
 
     steps:
@@ -69,7 +90,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pyinstaller pywebview bottle pillow certifi
+          pip install pyinstaller pywebview bottle pillow certifi keyring olefile==0.47
 
       - name: Build .exe with PyInstaller
         run: |
@@ -89,6 +110,8 @@ jobs:
       contents: write
 
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download Mac artifact
         uses: actions/download-artifact@v4
         with:
@@ -107,4 +130,5 @@ jobs:
           files: |
             WhatTime-mac.dmg
             whattime.exe
-          generate_release_notes: true
+          name: 지금 몇교시야 ${{ github.ref_name }}
+          body_path: docs/releases/${{ github.ref_name }}.md

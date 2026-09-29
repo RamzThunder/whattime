@@ -311,6 +311,8 @@ body.mini .lesson-history-btn { width:28px; padding:6px 0; font-size:.74rem; }
     </div>
     <div class="clock-container">
         <div class="date-label" id="dateLabel"></div>
+        <div class="date-label" id="schoolScheduleLabel" style="font-size:.7rem" hidden></div>
+        <div class="date-label" id="comciSyncStatus" style="font-size:.7rem" role="status" hidden></div>
         <div class="time-display" id="timeDisplay"></div>
         <div class="current-period" id="currentPeriod"></div>
         <div class="next-timer" id="nextTimer"></div>
@@ -859,14 +861,26 @@ function localDateKey(date) {
     return `${year}-${month}-${day}`;
 }
 
+function publishedEvent(date) {
+    return scheduleData?.subscribed_school?.events?.find(event => event.date === localDateKey(date));
+}
+
+function subscribedPersonalEntry(item, date) {
+    // Published schedules may omit morning/lunch rows or change their order.
+    // Match a period to the user's ordinary schedule instead of shifting all personal lessons.
+    const ordinary = (scheduleData.seven_period_days || [1, 2, 4]).includes(date.getDay())
+        ? scheduleData.full : deriveSixPeriodSchedule(scheduleData.full);
+    const key = name => String(name || '').trim().match(/^(\d+)교시/)?.[1];
+    const period = key(item.name);
+    const index = (ordinary || []).findIndex(row => period ? key(row.name) === period : row.name === item.name);
+    return index < 0 ? undefined : scheduleData.personal?.[String(date.getDay())]?.[index];
+}
+
 function getTodaySchedule(dateOrDay) {
     if (!scheduleData) return [];
     const hasDate = dateOrDay instanceof Date;
     const dayIndex = hasDate ? dateOrDay.getDay() : Number(dateOrDay);
-    const restDays = scheduleData.rest_days ?? [0, 6];
-    if (restDays.includes(dayIndex)) {
-        return (scheduleData.rest_schedules && scheduleData.rest_schedules[String(dayIndex)]) || [];
-    }
+    // Explicit local profiles take precedence over subscribed schedules, including rest days.
     if (scheduleData.special_schedule_enabled === true && hasDate) {
         const dateKey = localDateKey(dateOrDay);
         const profiles = Array.isArray(scheduleData.special_schedules)
@@ -876,11 +890,17 @@ function getTodaySchedule(dateOrDay) {
         if (profile && Array.isArray(profile.schedule) && profile.schedule.length > 0)
             return profile.schedule;
 
-        // 저장 전의 2.2.x 데이터를 위한 읽기 호환 경로.
+        // Read compatibility for legacy settings before their first migration/save.
         const legacySchedule = scheduleData.special || [];
         const legacyDates = scheduleData.special_dates || [];
         if (!profiles.length && legacyDates.includes(dateKey) && legacySchedule.length > 0)
             return legacySchedule;
+    }
+    const published = hasDate && publishedEvent(dateOrDay);
+    if (published) return published.periods;
+    const restDays = scheduleData.rest_days ?? [0, 6];
+    if (restDays.includes(dayIndex)) {
+        return (scheduleData.rest_schedules && scheduleData.rest_schedules[String(dayIndex)]) || [];
     }
     let sevenPeriodDays = scheduleData.seven_period_days;
     if (!Array.isArray(sevenPeriodDays)) {
@@ -904,8 +924,12 @@ function formatTime(date) {
     return `${String(date.getHours()).padStart(2,"0")}:${String(date.getMinutes()).padStart(2,"0")}`;
 }
 
+function escapeScheduleText(value) {
+    return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c]));
+}
+
 function formatPeriodName(name) {
-    return name.replace(/\(([^)]+)\)/g, '<span class="sub-label">($1)</span>');
+    return escapeScheduleText(name).replace(/\(([^)]+)\)/g, '<span class="sub-label">($1)</span>');
 }
 
 function toMinutes(t) {
@@ -932,7 +956,7 @@ function addMiniInactiveBlock(container, name) {
     block.innerHTML = `
         <div class="period-content">
             <div class="period-text-base">
-                <span class="period-name">${name}</span>
+                <span class="period-name">${escapeScheduleText(name)}</span>
             </div>
         </div>`;
     container.appendChild(block);
@@ -989,6 +1013,11 @@ function render() {
     const restTimerPrefix = scheduleData.rest_timer_prefix || "월요일 출근까지";
 
     document.getElementById("dateLabel").textContent = formatDate(now);
+    const schoolEvent = publishedEvent(now);
+    const usingSchoolSchedule = schoolEvent && todaySchedule === schoolEvent.periods;
+    const schoolLabel = document.getElementById('schoolScheduleLabel');
+    schoolLabel.hidden = !usingSchoolSchedule;
+    schoolLabel.textContent = usingSchoolSchedule ? `${scheduleData.subscribed_school.name} · ${schoolEvent.title}` : '';
     document.getElementById("timeDisplay").textContent = currentTime;
     document.getElementById("miniTime").textContent = currentTime;
     container.innerHTML = "";
@@ -1062,7 +1091,7 @@ function render() {
 
         // 개인 시간표: 항상 표시
         let personalLabel = '';
-        const personalEntry = personalSchedule[i];
+        const personalEntry = usingSchoolSchedule ? subscribedPersonalEntry(item, now) : personalSchedule[i];
         if (personalEntry) {
             const parts = [personalEntry.room, personalEntry.name].filter(Boolean).join(' ');
             if (parts) personalLabel = `<span class="personal-label">${parts}</span>`;
@@ -1238,6 +1267,52 @@ async function init() {
         setTimeout(() => window.pywebview.api.refresh_transparency(), 400);
     }
     checkStartupUpdate();
+    checkSchoolSubscriptionAtStartup();
+    checkWeeklyComci();
+    // This timer only notices local date changes; network requests are gated to Mondays.
+    setInterval(checkWeeklyComci, 60 * 1000);
+}
+
+async function checkSchoolSubscriptionAtStartup() {
+    try {
+        const state = await window.pywebview.api.get_school_subscription();
+        if (!state.school_id) return;
+        const result = await window.pywebview.api.check_school_subscription();
+        if (!result.ok) return; // Keep the last accepted schedule when offline.
+        const summary = result.changes.slice(0, 10).join('\n');
+        const more = result.changes.length > 10 ? `\n외 ${result.changes.length - 10}건` : '';
+        if (result.requires_confirmation && !confirm(`${result.school_name} 특별시정 변경이 있어요.\n\n${summary}${more}\n\n받아와서 적용할까요? 취소하면 기존 시정을 유지해요.`)) {
+            await window.pywebview.api.decline_school_subscription(result.proposal_id);
+            return;
+        }
+        await window.pywebview.api.accept_school_subscription(result.proposal_id);
+        await loadSchedule();
+    } catch (error) { console.warn('학교 시정 확인 실패'); }
+}
+
+let comciCheckedDate = null;
+let comciCheckRunning = false;
+async function checkWeeklyComci() {
+    const now = new Date();
+    const today = localDateKey(now);
+    if (now.getDay() !== 1 || comciCheckedDate === today || comciCheckRunning) return;
+    comciCheckedDate = today;
+    comciCheckRunning = true;
+    try {
+        const result = await window.pywebview.api.sync_weekly_comci();
+        if (result.deferred) { comciCheckedDate = null; return; }
+        const status = document.getElementById('comciSyncStatus');
+        if (!result.ok) {
+            status.textContent = '컴시간 갱신 실패 · 설정에서 다시 불러올 수 있어요';
+            status.hidden = false;
+        } else if (result.updated) {
+            await reloadSchedule();
+            status.textContent = '이번 주 컴시간 시간표를 갱신했어요';
+            status.hidden = false;
+            setTimeout(() => { status.hidden = true; }, 10000);
+        }
+    } catch (error) { console.warn('컴시간 자동 갱신 실패'); }
+    finally { comciCheckRunning = false; }
 }
 
 function scheduleRender() {

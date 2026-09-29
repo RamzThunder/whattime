@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>수업 이동 알림</title>
+<style>
+[hidden]{display:none!important}*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#eef4ff;color:#123163;min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center}main{width:100%;padding:20px 32px}.eyebrow{font-size:17px;font-weight:750;letter-spacing:.04em}.title{overflow-wrap:anywhere;white-space:pre-wrap;font-size:32px;margin:8px 0 4px;font-weight:800}.room{font-size:clamp(42px,9vw,78px);font-weight:900;line-height:1.2;margin:8px 0;overflow-wrap:anywhere}.meta{font-size:21px;color:#46628a;margin:8px 0}.actions{display:flex;gap:12px;justify-content:center;margin-top:20px}button{font:inherit;font-size:18px;font-weight:700;padding:14px 24px;border-radius:12px;cursor:pointer;border:1px solid #adc3e5;background:white;color:#153666}button.primary{background:#215cc4;color:white;border-color:#215cc4}.mute{display:block;margin:13px auto 0;padding:5px 8px;border:0;background:transparent;color:inherit;font-size:13px;font-weight:400;text-decoration:underline;text-underline-offset:3px;opacity:.8}.preview{font-size:13px;margin-top:12px;color:inherit;opacity:.7}body.urgent{background:#b91226;color:#fff}body.urgent .title{font-size:42px}body.urgent .room{font-size:clamp(52px,11vw,100px)}body.urgent .meta{color:#ffe1e6}body.urgent .eyebrow{font-size:21px}body.urgent button{background:transparent;color:#fff;border-color:#ffb9c2}body.urgent button.primary{background:white;color:#a8001b;border-color:white}button:focus-visible{outline:4px solid #f5bb24;outline-offset:4px}@media(max-height:400px){main{padding:16px}.title{font-size:26px}.room{font-size:48px}.actions{margin-top:14px}.meta{font-size:16px}}
+body,body.urgent{background:var(--reminder-bg,#eef4ff);color:var(--reminder-fg,#123163)}.meta,body.urgent .meta{color:inherit;opacity:.85}button.primary,body.urgent button.primary{background:var(--reminder-fg);color:var(--reminder-bg);border-color:var(--reminder-fg)}body.urgent .mute{color:inherit}
+</style></head>
+<body><main role="alert" aria-live="assertive">
+<div class="eyebrow" id="eyebrow">수업 이동 알림</div>
+<div class="title" id="title">수업 시작 시간이에요!</div>
+<div class="room" id="room"></div>
+<div class="meta" id="meta"></div>
+<div class="actions"><button class="primary" onclick="closeReminder(false)">지금 갈게요!</button></div>
+<button class="mute" hidden onclick="closeReminder(true)">이번 시간 알림하지 않기</button>
+<div class="preview" id="preview" hidden>미리보기 · 실제 수업 알림에 영향을 주지 않아요</div>
+</main>
+<script>
+function reminderBackground(text, urgent) {
+    const kind=urgent?'urgent':'start';
+    const image=text[kind+'_image'];
+    if (typeof image!=='string' || image.length>2000000 || !/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(image)) return 'none';
+    const value=text[kind+'_dim'];
+    const dim=typeof value==='number' && Number.isFinite(value)?Math.min(80,Math.max(0,value)):40;
+    return `linear-gradient(rgba(0,0,0,${dim/100}),rgba(0,0,0,${dim/100})),url("${image}")`;
+}
+function renderReminder(data){
+    const urgent=data.level==='urgent';document.body.classList.toggle('urgent',urgent);
+    document.getElementById('eyebrow').textContent=urgent?`수업 시작 후 ${Math.max(20,data.elapsed_seconds || 20)}초가 지났어요`:'수업 이동 알림';
+    const text=data.text || {};
+    document.body.style.backgroundImage=reminderBackground(text,urgent);
+    document.body.style.backgroundSize='cover';
+    document.body.style.backgroundPosition='center';
+    document.body.style.backgroundAttachment='fixed';
+    const color=(key,fallback)=>/^#[0-9a-f]{6}$/i.test(text[key] || '')?text[key]:fallback;
+    document.body.style.setProperty('--reminder-bg',color(urgent?'urgent_background':'start_background',urgent?'#b91226':'#eef4ff'));
+    document.body.style.setProperty('--reminder-fg',color(urgent?'urgent_foreground':'start_foreground',urgent?'#ffffff':'#123163'));
+    document.getElementById('title').textContent=(urgent?text.urgent_title:text.start_title) || (urgent?'컴퓨터는 잠시 내려놓고, 수업 가세요!':'수업 시작 시간이에요!');
+    document.querySelector('.primary').textContent=text.button_label || '지금 갈게요!';
+    document.querySelector('.mute').hidden=!urgent;
+    const raw=String(data.class_name || '');const match=raw.match(/^(\d+)-(\d+)$/);
+    document.getElementById('room').textContent=match?`${match[1]}학년 ${match[2]}반`:raw;
+    document.getElementById('meta').textContent=[data.period,data.subject,`${data.start}–${data.end}`].filter(Boolean).join(' · ');
+    document.getElementById('preview').hidden=!data.preview;
+}
+function closeReminder(mute){window.pywebview.api.close_desktop_reminder(mute);}
+window.addEventListener('pywebviewready',async()=>renderReminder(await window.pywebview.api.get_desktop_reminder()));
+</script></body></html>
