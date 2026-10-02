@@ -17,7 +17,7 @@ from school_schedules import DEFAULT_SOURCE, SubscriptionStore, atomic_json
 from personal_timetable import apply_comci_result, comci_target, comci_weekly_due
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '3.1.0'
+APP_VERSION = '3.1.1'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -546,11 +546,14 @@ def _progress_public_record(record, include_image=False):
 # ─────────────────────────────────────────
 class Api:
     def __init__(self):
-        self.settings_window = None
-        self.progress_window = None
-        self.progress_history_window = None
-        self.lesson_end_window = None
-        self.powerpoint_confirm_window = None
+        # pywebview recursively inspects public API attributes. Keep Window
+        # objects private so bridge setup never traverses native WinForms
+        # objects or calls GUI properties from its worker thread.
+        self._settings_window = None
+        self._progress_window = None
+        self._progress_history_window = None
+        self._lesson_end_window = None
+        self._powerpoint_confirm_window = None
         self._lesson_end_payload = None
         self._lesson_end_submitting = False
         self._progress_popup_payload = None
@@ -566,7 +569,7 @@ class Api:
         self._desktop_started = False
         self._desktop_error = ''
         self._desktop_payload = None
-        self.desktop_reminder_window = None
+        self._desktop_reminder_window = None
 
     def start_desktop_reminders(self):
         if self._desktop_started:
@@ -629,7 +632,7 @@ class Api:
             x, y = screen.x + (screen.width - width) // 2, screen.y + (screen.height - height) // 2
         except Exception:
             pass
-        window = self.desktop_reminder_window
+        window = self._desktop_reminder_window
         if window is not None and window in webview.windows:
             window.resize(width, height)
             if x is not None:
@@ -644,13 +647,13 @@ class Api:
             width=width, height=height, x=x, y=y, min_size=(360, 280), resizable=True,
             on_top=True, focus=True, background_color=payload['text'].get('urgent_background' if urgent else 'start_background',
                                                      '#b91226' if urgent else '#eef4ff'), js_api=self)
-        self.desktop_reminder_window = window
+        self._desktop_reminder_window = window
         def closed():
-            if self.desktop_reminder_window is window:
+            if self._desktop_reminder_window is window:
                 current = self._desktop_payload
                 if current and not current.get('preview'):
                     self._desktop_engine.dismiss(current['id'], time.time())
-                self.desktop_reminder_window = None
+                self._desktop_reminder_window = None
                 self._desktop_payload = None
         window.events.closed += closed
 
@@ -661,11 +664,11 @@ class Api:
         return {'error': self._desktop_error}
 
     def close_desktop_reminder(self, mute=False):
-        payload, window = self._desktop_payload, self.desktop_reminder_window
+        payload, window = self._desktop_payload, self._desktop_reminder_window
         if payload and not payload.get('preview'):
             self._desktop_engine.dismiss(payload['id'], time.time(), bool(mute))
         self._desktop_payload = None
-        self.desktop_reminder_window = None
+        self._desktop_reminder_window = None
         if window is not None:
             threading.Timer(0.05, window.destroy).start()
         return True
@@ -702,15 +705,15 @@ class Api:
     def open_settings(self):
         if self._settings_opening:
             return
-        if self.settings_window is not None:
-            if self.settings_window in webview.windows:
+        if self._settings_window is not None:
+            if self._settings_window in webview.windows:
                 try:
-                    self.settings_window.on_top = True
+                    self._settings_window.on_top = True
                 except:
                     pass
                 return
             else:
-                self.settings_window = None
+                self._settings_window = None
 
         self._settings_opening = True
         try:
@@ -733,7 +736,7 @@ class Api:
                 except OSError:
                     # Keep the existing file URL path as a safe fallback.
                     pass
-            self.settings_window = webview.create_window(
+            self._settings_window = webview.create_window(
                 title='설정',
                 width=480,
                 height=720,
@@ -745,25 +748,25 @@ class Api:
             self._settings_opening = False
 
         def on_closed():
-            self.settings_window = None
-        self.settings_window.events.closed += on_closed
+            self._settings_window = None
+        self._settings_window.events.closed += on_closed
 
     def open_progress_popup(self, payload):
         if not isinstance(payload, dict):
             return False
         self._progress_popup_payload = payload
-        if self.progress_window is not None and self.progress_window in webview.windows:
+        if self._progress_window is not None and self._progress_window in webview.windows:
             encoded = json.dumps(payload, ensure_ascii=False)
             def _update():
                 try:
-                    self.progress_window.evaluate_js(f'renderProgress({encoded})')
-                    self.progress_window.on_top = True
+                    self._progress_window.evaluate_js(f'renderProgress({encoded})')
+                    self._progress_window.on_top = True
                 except Exception:
                     pass
             threading.Timer(0, _update).start()
             return True
 
-        self.progress_window = webview.create_window(
+        self._progress_window = webview.create_window(
             title='지난 수업 진도',
             url=PROGRESS_HTML,
             width=460,
@@ -775,33 +778,33 @@ class Api:
         )
 
         def on_closed():
-            self.progress_window = None
-        self.progress_window.events.closed += on_closed
+            self._progress_window = None
+        self._progress_window.events.closed += on_closed
         return True
 
     def get_progress_popup_data(self):
         return self._progress_popup_payload
 
     def close_progress_popup(self):
-        if self.progress_window:
+        if self._progress_window:
             try:
-                self.progress_window.destroy()
+                self._progress_window.destroy()
             except Exception:
                 pass
-            self.progress_window = None
+            self._progress_window = None
         return True
 
     def open_progress_history(self):
-        if self.progress_history_window is not None:
-            if self.progress_history_window in webview.windows:
+        if self._progress_history_window is not None:
+            if self._progress_history_window in webview.windows:
                 try:
-                    self.progress_history_window.on_top = True
+                    self._progress_history_window.on_top = True
                 except Exception:
                     pass
                 return True
-            self.progress_history_window = None
+            self._progress_history_window = None
 
-        self.progress_history_window = webview.create_window(
+        self._progress_history_window = webview.create_window(
             title='진도 기록',
             url=PROGRESS_HISTORY_HTML,
             width=760,
@@ -812,36 +815,36 @@ class Api:
         )
 
         def on_closed():
-            self.progress_history_window = None
-        self.progress_history_window.events.closed += on_closed
+            self._progress_history_window = None
+        self._progress_history_window.events.closed += on_closed
         return True
 
     def close_progress_history(self):
-        if self.progress_history_window:
+        if self._progress_history_window:
             try:
-                self.progress_history_window.destroy()
+                self._progress_history_window.destroy()
             except Exception:
                 pass
-            self.progress_history_window = None
+            self._progress_history_window = None
         return True
 
     def open_lesson_end_dialog(self, payload):
         if not isinstance(payload, dict):
             return False
         self._lesson_end_payload = payload
-        if self.lesson_end_window is not None:
-            if self.lesson_end_window in webview.windows:
+        if self._lesson_end_window is not None:
+            if self._lesson_end_window in webview.windows:
                 encoded = json.dumps(payload, ensure_ascii=False)
                 try:
-                    self.lesson_end_window.evaluate_js(f'renderLessonEnd({encoded})')
-                    self.lesson_end_window.on_top = True
+                    self._lesson_end_window.evaluate_js(f'renderLessonEnd({encoded})')
+                    self._lesson_end_window.on_top = True
                 except Exception:
                     pass
                 return True
-            self.lesson_end_window = None
+            self._lesson_end_window = None
 
         self._lesson_end_submitting = False
-        self.lesson_end_window = webview.create_window(
+        self._lesson_end_window = webview.create_window(
             title='수업 종료',
             url=LESSON_END_HTML,
             width=430,
@@ -854,11 +857,11 @@ class Api:
 
         def on_closed():
             was_submitting = self._lesson_end_submitting
-            self.lesson_end_window = None
+            self._lesson_end_window = None
             self._lesson_end_submitting = False
             if not was_submitting:
                 threading.Timer(0, lambda: main_window.evaluate_js('cancelLessonEndDialog()')).start()
-        self.lesson_end_window.events.closed += on_closed
+        self._lesson_end_window.events.closed += on_closed
         return True
 
     def get_lesson_end_dialog_data(self):
@@ -872,7 +875,7 @@ class Api:
         self._lesson_end_submitting = True
 
         def close_and_submit():
-            window = self.lesson_end_window
+            window = self._lesson_end_window
             if window:
                 try:
                     window.destroy()
@@ -887,9 +890,9 @@ class Api:
         return True
 
     def close_lesson_end_dialog(self):
-        if self.lesson_end_window:
+        if self._lesson_end_window:
             try:
-                self.lesson_end_window.destroy()
+                self._lesson_end_window.destroy()
             except Exception:
                 pass
         return True
@@ -898,16 +901,16 @@ class Api:
         if not _is_powerpoint_running():
             return False
 
-        if self.powerpoint_confirm_window is not None:
-            if self.powerpoint_confirm_window in webview.windows:
+        if self._powerpoint_confirm_window is not None:
+            if self._powerpoint_confirm_window in webview.windows:
                 try:
-                    self.powerpoint_confirm_window.on_top = True
+                    self._powerpoint_confirm_window.on_top = True
                 except Exception:
                     pass
                 return True
-            self.powerpoint_confirm_window = None
+            self._powerpoint_confirm_window = None
 
-        self.powerpoint_confirm_window = webview.create_window(
+        self._powerpoint_confirm_window = webview.create_window(
             title='PowerPoint 종료 확인',
             url=POWERPOINT_CONFIRM_HTML,
             width=410,
@@ -919,17 +922,17 @@ class Api:
         )
 
         def on_closed():
-            self.powerpoint_confirm_window = None
-        self.powerpoint_confirm_window.events.closed += on_closed
+            self._powerpoint_confirm_window = None
+        self._powerpoint_confirm_window.events.closed += on_closed
         return True
 
     def close_powerpoint_quit_dialog(self):
-        if self.powerpoint_confirm_window:
+        if self._powerpoint_confirm_window:
             try:
-                self.powerpoint_confirm_window.destroy()
+                self._powerpoint_confirm_window.destroy()
             except Exception:
                 pass
-            self.powerpoint_confirm_window = None
+            self._powerpoint_confirm_window = None
         return True
 
     def confirm_powerpoint_quit(self):
@@ -1289,14 +1292,14 @@ class Api:
             if not comci_weekly_due(before):
                 return {'ok': True, 'updated': False}
             # Do not replace a settings form that the user is currently editing.
-            if self.settings_window or self._settings_opening:
+            if self._settings_window or self._settings_opening:
                 return {'ok': True, 'deferred': True}
             target = comci_target(before)
             try:
                 result = fetch_comci_teacher_schedule(*target)
                 with SCHEDULE_LOCK:
                     latest = load_schedule()
-                    if self.settings_window or self._settings_opening or comci_target(latest) != target:
+                    if self._settings_window or self._settings_opening or comci_target(latest) != target:
                         return {'ok': True, 'deferred': True}
                     if not comci_weekly_due(latest):
                         return {'ok': True, 'updated': False}
@@ -1305,7 +1308,7 @@ class Api:
             except Exception as error:
                 with SCHEDULE_LOCK:
                     latest = load_schedule()
-                    if not self.settings_window and not self._settings_opening and comci_target(latest) == target:
+                    if not self._settings_window and not self._settings_opening and comci_target(latest) == target:
                         latest['comci_sync_error'] = str(error)
                         save_schedule(latest)
                 return {'ok': False, 'error': str(error)}
@@ -1465,10 +1468,10 @@ class Api:
         return True
 
     def export_data(self):
-        if not self.settings_window:
+        if not self._settings_window:
             return False
         try:
-            result = self.settings_window.create_file_dialog(
+            result = self._settings_window.create_file_dialog(
                 webview.SAVE_DIALOG,
                 save_filename='schedule_backup.json',
                 file_types=('JSON files (*.json)', 'All files (*.*)')
@@ -1483,10 +1486,10 @@ class Api:
             return False
 
     def import_data(self):
-        if not self.settings_window:
+        if not self._settings_window:
             return False
         try:
-            result = self.settings_window.create_file_dialog(
+            result = self._settings_window.create_file_dialog(
                 webview.OPEN_DIALOG,
                 file_types=('JSON files (*.json)', 'All files (*.*)')
             )
@@ -1504,10 +1507,10 @@ class Api:
             return False
 
     def import_hwpx_schedule(self):
-        if not self.settings_window:
+        if not self._settings_window:
             return {'ok': False, 'error': '설정 창을 먼저 열어 주세요.'}
         try:
-            result = self.settings_window.create_file_dialog(
+            result = self._settings_window.create_file_dialog(
                 webview.OPEN_DIALOG,
                 file_types=('HWPX files (*.hwpx)', 'All files (*.*)')
             )
@@ -1661,12 +1664,12 @@ class Api:
             return False
 
     def close_settings(self):
-        if self.settings_window:
+        if self._settings_window:
             try:
-                self.settings_window.destroy()
+                self._settings_window.destroy()
             except:
                 pass
-            self.settings_window = None
+            self._settings_window = None
 
 if not IS_MAC and not _ensure_single_instance():
     sys.exit(0)

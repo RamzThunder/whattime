@@ -120,7 +120,7 @@ class WeeklyApiTests(unittest.TestCase):
         exec(compile(module, 'weekly-api-test', 'exec'), self.env)
         self.api = self.env['ApiUnderTest']()
         self.api._comci_sync_lock = threading.Lock()
-        self.api.settings_window = None; self.api._settings_opening = False
+        self.api._settings_window = None; self.api._settings_opening = False
 
     def save(self, data):
         self.data = copy.deepcopy(data)
@@ -140,12 +140,12 @@ class WeeklyApiTests(unittest.TestCase):
         self.assertTrue(comci_weekly_due(self.data, MONDAY))
 
     def test_settings_edit_defers_network_and_commit(self):
-        self.api.settings_window = object()
+        self.api._settings_window = object()
         self.assertTrue(self.api.sync_weekly_comci()['deferred'])
         self.assertEqual(self.calls, 0)
-        self.api.settings_window = None
+        self.api._settings_window = None
         def fetch(*args):
-            self.api.settings_window = object()
+            self.api._settings_window = object()
             return remote()
         self.env['fetch_comci_teacher_schedule'] = fetch
         self.assertTrue(self.api.sync_weekly_comci()['deferred'])

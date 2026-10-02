@@ -9,8 +9,19 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    outputs:
+      build_mac: ${{ steps.platforms.outputs.build_mac }}
     steps:
       - uses: actions/checkout@v4
+      - name: Select release platforms
+        id: platforms
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]] && [[ -f "docs/releases/${GITHUB_REF_NAME}.windows-only" ]]; then
+            echo "build_mac=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "build_mac=true" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -29,6 +40,7 @@ jobs:
           node tests/test_desktop_reminder_view.js
 
   build-mac:
+    if: needs.test.outputs.build_mac == 'true'
     needs: test
     runs-on: macos-latest
     permissions:
@@ -105,8 +117,8 @@ jobs:
           path: dist/whattime.exe
 
   release:
-    if: startsWith(github.ref, 'refs/tags/')
-    needs: [build-mac, build-win]
+    if: always() && startsWith(github.ref, 'refs/tags/') && needs.test.result == 'success' && needs.build-win.result == 'success' && (needs.build-mac.result == 'success' || needs.build-mac.result == 'skipped')
+    needs: [test, build-mac, build-win]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -115,6 +127,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Download Mac artifact
+        if: needs.build-mac.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: WhatTime-mac
@@ -129,8 +142,7 @@ jobs:
         with:
           repository: RamzThunder/whattime-releases
           token: ${{ secrets.releases_pat }}
-          files: |
-            WhatTime-mac.dmg
-            whattime.exe
+          files: ${{ needs.build-mac.result == 'success' && 'WhatTime-mac.dmg,whattime.exe' || 'whattime.exe' }}
+          fail_on_unmatched_files: true
           name: 지금 몇교시야 ${{ github.ref_name }}
           body_path: docs/releases/${{ github.ref_name }}.md
