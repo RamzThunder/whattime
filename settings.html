@@ -1250,6 +1250,14 @@ function onUpdateCheckResult(result) {
         btn.style.cursor = 'pointer';
         btn.onclick = doInstallUpdate;
         _updateUrl = result.url;
+    } else if (result && result.other_platform_release) {
+        desc.textContent = `v${result.version}은 ${result.other_platform_release}용 업데이트예요. 현재 사용 중인 버전(v${result.current})은 업데이트가 필요 없어요.`;
+        btn.textContent = '업데이트 불필요';
+        btn.disabled = true;
+        btn.style.opacity = '0.4';
+        btn.style.cursor = 'default';
+        btn.onclick = null;
+        _updateUrl = null;
     } else {
         const ver = result && (result.version || result.current);
         desc.textContent = result && result.error

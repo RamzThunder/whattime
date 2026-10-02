@@ -38,6 +38,7 @@ jobs:
           node tests/test_lesson_mapping.js
           node tests/test_admin_editor.js
           node tests/test_desktop_reminder_view.js
+          node tests/test_app_update_view.js
 
   build-mac:
     if: needs.test.outputs.build_mac == 'true'

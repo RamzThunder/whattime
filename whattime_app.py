@@ -17,7 +17,7 @@ from school_schedules import DEFAULT_SOURCE, SubscriptionStore, atomic_json
 from personal_timetable import apply_comci_result, comci_target, comci_weekly_due
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '3.1.1'
+APP_VERSION = '3.1.2'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -363,6 +363,10 @@ def _build_update_result(data):
     asset_name = 'WhatTime-mac.dmg' if IS_MAC else 'whattime.exe'
     url = next((a['browser_download_url'] for a in data.get('assets', []) if a['name'] == asset_name), None)
     if not url:
+        other_asset = 'whattime.exe' if IS_MAC else 'WhatTime-mac.dmg'
+        if any(a.get('name') == other_asset and a.get('browser_download_url') for a in data.get('assets', [])):
+            return {'has_update': False, 'version': latest, 'current': APP_VERSION,
+                    'other_platform_release': 'Windows' if IS_MAC else 'macOS'}
         return {'has_update': False, 'version': latest, 'current': APP_VERSION, 'error': asset_name + ' not found'}
     return {'has_update': True, 'version': latest, 'url': url, 'current': APP_VERSION}
 
