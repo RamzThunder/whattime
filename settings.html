@@ -661,29 +661,6 @@ body.settings-loading::before {
                     onclick="importComciSchedule()">이번 주 불러오기</button>
             </div>
         </div>
-        <div class="text-section" style="margin-bottom:14px;">
-            <div class="text-section-title">노션에 주간 시간표 보관</div>
-            <label class="startup-desc" style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
-                <input type="checkbox" id="notionArchiveToggle" onchange="data.notion_archive_enabled=this.checked">
-                컴시간 시간표를 불러올 때마다 노션에 주간 페이지로 쌓기
-            </label>
-            <div class="text-row">
-                <span class="text-row-label">보관 페이지</span>
-                <input type="text" id="notionArchivePageInput" placeholder="노션 페이지 링크">
-            </div>
-            <div class="text-row">
-                <span class="text-row-label">통합 토큰</span>
-                <input type="password" id="notionTokenInput" autocomplete="off" placeholder="새 토큰을 붙여 넣으세요">
-                <button class="hex-add-btn" onclick="saveNotionToken()">저장</button>
-                <button class="hex-add-btn" onclick="deleteNotionToken()">삭제</button>
-            </div>
-            <div class="startup-desc" style="line-height:1.45;margin:8px 0 10px;">
-                노션에서 통합(Integration)을 만들고 보관 페이지에 연결해 주세요.
-                토큰은 이 컴퓨터의 보안 저장소에만 보관하고 설정 파일에는 쓰지 않아요.
-                같은 주에 다시 불러오면 그 주 페이지를 새 내용으로 바꿔요.
-            </div>
-            <div class="startup-desc" id="notionArchiveStatus" role="status"></div>
-        </div>
     <div class="startup-section">
         <div>
             <div class="startup-label">🍱 1학년 5교시를 점심시간에 배치</div>
@@ -949,6 +926,30 @@ body.settings-loading::before {
         <div class="startup-desc" style="margin-top:10px">JPG·PNG·WebP 사진은 앱에 복사해 저장해요. 사진을 고르면 글자색이 흰색으로 바뀌며, 다시 조절할 수 있어요.</div>
         <div class="startup-desc" style="margin-top:10px">빈칸은 기본 문구를 사용해요. 미리보기로 확인한 뒤 저장하세요.</div>
         <button class="data-btn" style="margin-top:10px" onclick="resetReminderText()">꾸미기 기본값으로 되돌리기</button>
+    </details>
+
+    <div class="startup-section">
+        <div>
+            <div class="startup-label">🗂 노션에 주간 시간표 보관</div>
+            <div class="startup-desc" style="line-height:1.5">컴시간 시간표를 불러올 때마다 그 주의 개인 시간표를 노션 페이지로 쌓아요. 같은 주에 다시 불러오면 그 주 페이지를 새 내용으로 바꿔요.</div>
+            <div class="startup-desc" id="notionArchiveStatus" role="status"></div>
+        </div>
+        <div class="toggle-wrap">
+            <input type="checkbox" class="toggle-input" id="notionArchiveToggle" onchange="data.notion_archive_enabled=this.checked">
+            <label class="toggle-label" for="notionArchiveToggle"></label>
+        </div>
+    </div>
+    <details style="margin:0 0 20px;padding:14px;border:1px solid #ddd;border-radius:10px">
+        <summary style="cursor:pointer;font-weight:600">노션 연결 설정</summary>
+        <label style="display:block;margin-top:14px" for="notionArchivePageInput">보관 페이지 링크</label>
+        <input type="text" id="notionArchivePageInput" placeholder="노션 페이지 링크" style="width:100%;box-sizing:border-box;margin-top:6px;padding:9px">
+        <label style="display:block;margin-top:14px" for="notionTokenInput">API 토큰</label>
+        <input type="password" id="notionTokenInput" autocomplete="off" placeholder="새 토큰을 붙여 넣으세요" style="width:100%;box-sizing:border-box;margin-top:6px;padding:9px">
+        <div style="display:flex;gap:6px;margin-top:8px">
+            <button class="data-btn" style="width:auto" onclick="saveNotionToken()">토큰 저장</button>
+            <button class="data-btn" style="width:auto" onclick="deleteNotionToken()">토큰 삭제</button>
+        </div>
+        <div class="startup-desc" style="margin-top:10px;line-height:1.5">노션 개발자 도구에서 API 토큰 방식의 연결을 만들고, 보관 페이지의 ⋯ &gt; 연결에 추가해 주세요. 토큰은 이 컴퓨터의 보안 저장소에만 보관하고 설정 파일에는 쓰지 않아요.</div>
     </details>
 </div><!-- /main-panel-labs -->
 

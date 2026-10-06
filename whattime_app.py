@@ -18,7 +18,7 @@ from personal_timetable import apply_comci_result, comci_target, comci_weekly_du
 import notion_archive
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '3.1.3'
+APP_VERSION = '3.1.4'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
