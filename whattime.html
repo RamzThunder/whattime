@@ -1301,7 +1301,8 @@ async function checkWeeklyComci() {
             status.hidden = false;
         } else if (result.updated) {
             await reloadSchedule();
-            status.textContent = '이번 주 컴시간 시간표를 갱신했어요';
+            status.textContent = '이번 주 컴시간 시간표를 갱신했어요' +
+                (result.notion ? (result.notion.ok ? ' · 노션에 보관했어요' : ' · 노션 보관 실패') : '');
             status.hidden = false;
             setTimeout(() => { status.hidden = true; }, 10000);
         }

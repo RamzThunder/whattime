@@ -109,6 +109,7 @@ class WeeklyApiTests(unittest.TestCase):
         cls = ast.ClassDef(name='ApiUnderTest', bases=[], keywords=[], body=[method], decorator_list=[])
         module = ast.fix_missing_locations(ast.Module(body=[cls], type_ignores=[]))
         self.data = fixture(); self.calls = 0
+        self.notion = None; self.notion_outcomes = []
         def fetch(*args):
             self.calls += 1
             return remote()
@@ -116,6 +117,8 @@ class WeeklyApiTests(unittest.TestCase):
                     'save_schedule': self.save, 'comci_weekly_due': lambda data: comci_weekly_due(data, MONDAY),
                     'comci_target': lambda data: (data['comci_school_code'], data['comci_teacher_number']),
                     'fetch_comci_teacher_schedule': fetch,
+                    'archive_to_notion': lambda data, result: self.notion,
+                    'store_notion_outcome': self.notion_outcomes.append,
                     'apply_comci_result': lambda data, result: apply_comci_result(data, result, dt.datetime(2026,10,5,8))}
         exec(compile(module, 'weekly-api-test', 'exec'), self.env)
         self.api = self.env['ApiUnderTest']()
@@ -130,6 +133,17 @@ class WeeklyApiTests(unittest.TestCase):
         self.assertFalse(self.api.sync_weekly_comci()['updated'])
         self.assertEqual(self.calls, 1)
         self.assertEqual(self.data['personal']['1'][2]['name'], '급식지도')
+
+    def test_notion_outcome_is_stored_without_failing_the_sync(self):
+        self.assertIsNone(self.api.sync_weekly_comci()['notion'])
+        self.assertEqual(self.notion_outcomes, [])
+        self.data = fixture()
+        self.notion = {'ok': False, 'error': '노션 통합 토큰을 확인하세요.'}
+        result = self.api.sync_weekly_comci()
+        self.assertTrue(result['ok'] and result['updated'])
+        self.assertEqual(result['notion'], self.notion)
+        self.assertEqual(self.notion_outcomes, [self.notion])
+        self.assertEqual(self.data['comci_sync_error'], '')
 
     def test_failure_keeps_schedule_and_remains_due(self):
         before = copy.deepcopy(self.data['personal'])

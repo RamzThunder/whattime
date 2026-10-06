@@ -15,9 +15,10 @@ from schedule_documents import parse_hwpx_schedule
 from desktop_reminders import ReminderEngine, current_lesson, input_idle_seconds
 from school_schedules import DEFAULT_SOURCE, SubscriptionStore, atomic_json
 from personal_timetable import apply_comci_result, comci_target, comci_weekly_due
+import notion_archive
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '3.1.2'
+APP_VERSION = '3.1.3'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -63,6 +64,7 @@ LESSON_END_HTML    = os.path.join(base_dir, 'lesson_end.html')
 POWERPOINT_CONFIRM_HTML = os.path.join(base_dir, 'powerpoint_confirm.html')
 DESKTOP_REMINDER_HTML = os.path.join(base_dir, 'desktop_reminder.html')
 subscriptions = SubscriptionStore(os.path.join(data_dir, 'school_subscription.json'), fixed_source=DEFAULT_SOURCE)
+notion_credentials = notion_archive.credentials()
 
 WEBVIEW_STORAGE_PATH = None
 if not IS_MAC:
@@ -168,6 +170,8 @@ DEFAULT_SCHEDULE = {
     "comci_school_code": None,
     "comci_teacher_number": None,
     "comci_joam_first_grade_fifth_period": False,
+    "notion_archive_enabled": False,
+    "notion_archive_page": "",
     "end_text": "˚˖𓍢ִִ໋˚˖𓍢ִ✧˚.오늘 일정 종료˚˖𓍢ִִ໋˚˖𓍢ִ✧˚.",
     "rest_status_text": "학교 생각을 왜 하지",
     "rest_timer_prefix": "출근까지",
@@ -458,6 +462,23 @@ def save_schedule(data):
         data = dict(data)
         data.pop('subscribed_school', None)
         atomic_json(SCHEDULE_PATH, data)
+
+def archive_to_notion(data, result):
+    """None when the archive is off. Never raises: a Notion outage must not fail a Comci import."""
+    if not data.get('notion_archive_enabled'):
+        return None
+    try:
+        return {'ok': True, 'record': notion_archive.archive_week(data, result, notion_credentials.get())}
+    except Exception as error:
+        return {'ok': False, 'error': notion_archive.error_message(error)}
+
+def store_notion_outcome(outcome):
+    with SCHEDULE_LOCK:
+        latest = load_schedule()
+        if outcome['ok']:
+            latest['notion_last_archive'] = outcome['record']
+        latest['notion_sync_error'] = outcome.get('error', '')
+        save_schedule(latest)
 
 def _load_progress():
     if os.path.exists(PROGRESS_PATH):
@@ -1307,8 +1328,12 @@ class Api:
                         return {'ok': True, 'deferred': True}
                     if not comci_weekly_due(latest):
                         return {'ok': True, 'updated': False}
-                    save_schedule(apply_comci_result(latest, result))
-                return {'ok': True, 'updated': True}
+                    saved = apply_comci_result(latest, result)
+                    save_schedule(saved)
+                notion = archive_to_notion(saved, result)
+                if notion:
+                    store_notion_outcome(notion)
+                return {'ok': True, 'updated': True, 'notion': notion}
             except Exception as error:
                 with SCHEDULE_LOCK:
                     latest = load_schedule()
@@ -1318,6 +1343,38 @@ class Api:
                 return {'ok': False, 'error': str(error)}
         finally:
             self._comci_sync_lock.release()
+
+    def archive_comci_to_notion(self, data, result):
+        outcome = archive_to_notion(data, result)
+        if not outcome:
+            return {'ok': True, 'skipped': True}
+        try:
+            store_notion_outcome(outcome)
+        except OSError:
+            pass  # The settings form carries the same record and saves it with the rest.
+        return outcome
+
+    def get_notion_token_status(self):
+        try:
+            return {'ok': True, 'saved': bool(notion_credentials.get())}
+        except Exception:
+            return {'ok': False, 'saved': False, 'error': '토큰 저장소를 열지 못했어요.'}
+
+    def save_notion_token(self, token):
+        try:
+            notion_credentials.save(str(token or ''))
+            return {'ok': True, 'saved': True}
+        except ValueError as error:
+            return {'ok': False, 'error': str(error)}
+        except Exception:
+            return {'ok': False, 'error': '토큰을 저장하지 못했어요.'}
+
+    def delete_notion_token(self):
+        try:
+            notion_credentials.delete()
+            return {'ok': True, 'saved': False}
+        except Exception:
+            return {'ok': False, 'error': '토큰을 삭제하지 못했어요.'}
 
     def fetch_comci_schedule(self, school_code, teacher_number):
         try:

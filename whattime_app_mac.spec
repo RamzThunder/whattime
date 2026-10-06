@@ -20,6 +20,7 @@ a = Analysis(
         'Quartz',
         'bottle',
         'proxy_tools',
+        'keyring.backends.macOS',
     ],
     hookspath=[],
     hooksconfig={},
@@ -62,8 +63,8 @@ app = BUNDLE(
     icon='icon.icns',
     bundle_identifier='com.whattime.app',
     info_plist={
-        'CFBundleShortVersionString': '3.1.0',
-        'CFBundleVersion': '3.1.0',
+        'CFBundleShortVersionString': '3.1.3',
+        'CFBundleVersion': '3.1.3',
         'CFBundleDisplayName': '지금 몇교시야',
         'CFBundleName': '지금 몇교시야',
     },

@@ -661,6 +661,29 @@ body.settings-loading::before {
                     onclick="importComciSchedule()">이번 주 불러오기</button>
             </div>
         </div>
+        <div class="text-section" style="margin-bottom:14px;">
+            <div class="text-section-title">노션에 주간 시간표 보관</div>
+            <label class="startup-desc" style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+                <input type="checkbox" id="notionArchiveToggle" onchange="data.notion_archive_enabled=this.checked">
+                컴시간 시간표를 불러올 때마다 노션에 주간 페이지로 쌓기
+            </label>
+            <div class="text-row">
+                <span class="text-row-label">보관 페이지</span>
+                <input type="text" id="notionArchivePageInput" placeholder="노션 페이지 링크">
+            </div>
+            <div class="text-row">
+                <span class="text-row-label">통합 토큰</span>
+                <input type="password" id="notionTokenInput" autocomplete="off" placeholder="새 토큰을 붙여 넣으세요">
+                <button class="hex-add-btn" onclick="saveNotionToken()">저장</button>
+                <button class="hex-add-btn" onclick="deleteNotionToken()">삭제</button>
+            </div>
+            <div class="startup-desc" style="line-height:1.45;margin:8px 0 10px;">
+                노션에서 통합(Integration)을 만들고 보관 페이지에 연결해 주세요.
+                토큰은 이 컴퓨터의 보안 저장소에만 보관하고 설정 파일에는 쓰지 않아요.
+                같은 주에 다시 불러오면 그 주 페이지를 새 내용으로 바꿔요.
+            </div>
+            <div class="startup-desc" id="notionArchiveStatus" role="status"></div>
+        </div>
     <div class="startup-section">
         <div>
             <div class="startup-label">🍱 1학년 5교시를 점심시간에 배치</div>
@@ -1509,6 +1532,9 @@ async function init() {
     document.getElementById('comciTeacherNumberInput').value = data.comci_teacher_number || '';
     document.getElementById('comciWeeklyAutoToggle').checked = data.comci_weekly_auto_enabled !== false;
     renderComciSyncStatus();
+    document.getElementById('notionArchiveToggle').checked = !!data.notion_archive_enabled;
+    document.getElementById('notionArchivePageInput').value = data.notion_archive_page || '';
+    loadNotionTokenStatus();
     if (data.comci_joam_first_grade_fifth_period === undefined)
         data.comci_joam_first_grade_fifth_period = false;
     document.getElementById('comciJoamFirstGradeFifthToggle').checked =
@@ -2150,6 +2176,7 @@ async function save() {
     data.comci_weekly_auto_enabled = document.getElementById('comciWeeklyAutoToggle').checked;
     data.comci_joam_first_grade_fifth_period =
         document.getElementById('comciJoamFirstGradeFifthToggle').checked;
+    readNotionArchiveInputs();
     delete data.short;
     delete data.short_days;
     delete data.six_period_days;
@@ -2328,6 +2355,7 @@ async function importComciSchedule() {
         data.comci_sync_error = '';
         renderComciSyncStatus();
         renderPersonalList();
+        await archiveImportedToNotion(result);
         const displaySchoolName = enteredSchoolName ||
             (result.school_name_hidden ? `학교코드 ${result.school_code}` : result.school_name);
         desc.textContent = `${displaySchoolName} · ${result.teacher_number}번 ${result.teacher_name} · ${result.updated_at || '최신 자료'}`;
@@ -2341,6 +2369,54 @@ async function importComciSchedule() {
         button.disabled = false;
         button.textContent = '이번 주 불러오기';
     }
+}
+
+let notionTokenSaved = false;
+
+function readNotionArchiveInputs() {
+    data.notion_archive_enabled = document.getElementById('notionArchiveToggle').checked;
+    data.notion_archive_page = document.getElementById('notionArchivePageInput').value.trim();
+}
+
+function renderNotionArchiveStatus() {
+    const at = data.notion_last_archive?.at;
+    document.getElementById('notionArchiveStatus').textContent =
+        (notionTokenSaved ? '토큰 저장됨' : '저장된 토큰이 없어요') +
+        (at ? ` · 마지막 보관: ${new Date(at).toLocaleString()}` : '') +
+        (data.notion_sync_error ? ` · 최근 보관 실패: ${data.notion_sync_error}` : '');
+}
+
+async function loadNotionTokenStatus() {
+    const status = await window.pywebview.api.get_notion_token_status();
+    notionTokenSaved = !!status.saved;
+    renderNotionArchiveStatus();
+}
+
+async function saveNotionToken() {
+    const input = document.getElementById('notionTokenInput');
+    const result = await window.pywebview.api.save_notion_token(input.value);
+    if (!result.ok) { showToast(result.error || '토큰을 저장하지 못했어요'); return; }
+    input.value = '';
+    notionTokenSaved = true;
+    renderNotionArchiveStatus();
+    showToast('노션 토큰을 저장했어요');
+}
+
+async function deleteNotionToken() {
+    const result = await window.pywebview.api.delete_notion_token();
+    if (!result.ok) { showToast(result.error || '토큰을 삭제하지 못했어요'); return; }
+    notionTokenSaved = false;
+    renderNotionArchiveStatus();
+    showToast('노션 토큰을 삭제했어요');
+}
+
+async function archiveImportedToNotion(result) {
+    readNotionArchiveInputs();
+    if (!data.notion_archive_enabled) return;
+    const outcome = await window.pywebview.api.archive_comci_to_notion(data, result);
+    if (outcome.ok && outcome.record) data.notion_last_archive = outcome.record;
+    data.notion_sync_error = outcome.ok ? '' : (outcome.error || '노션에 보관하지 못했어요.');
+    renderNotionArchiveStatus();
 }
 
 async function searchComciSchools() {
