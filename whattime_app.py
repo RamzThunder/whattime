@@ -11,6 +11,10 @@ import hashlib
 import subprocess
 import tempfile
 import time
+import atexit
+import faulthandler
+import logging
+import logging.handlers
 from schedule_documents import parse_hwpx_schedule
 from desktop_reminders import ReminderEngine, current_lesson, input_idle_seconds
 from school_schedules import DEFAULT_SOURCE, SubscriptionStore, atomic_json
@@ -18,7 +22,7 @@ from personal_timetable import apply_comci_result, comci_target, comci_weekly_du
 import notion_archive
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '3.1.4'
+APP_VERSION = '3.1.5'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -65,6 +69,32 @@ POWERPOINT_CONFIRM_HTML = os.path.join(base_dir, 'powerpoint_confirm.html')
 DESKTOP_REMINDER_HTML = os.path.join(base_dir, 'desktop_reminder.html')
 subscriptions = SubscriptionStore(os.path.join(data_dir, 'school_subscription.json'), fixed_source=DEFAULT_SOURCE)
 notion_credentials = notion_archive.credentials()
+
+# ─────────────────────────────────────────
+# 진단 로그: 앱이 예고 없이 꺼질 때 마지막 동작을 남긴다
+# ─────────────────────────────────────────
+LOG_DIR = os.path.expanduser('~/Library/Logs/WhatTime') if IS_MAC and getattr(sys, 'frozen', False) else data_dir
+app_log = logging.getLogger('whattime')
+
+def _setup_app_log():
+    try:
+        os.makedirs(LOG_DIR, exist_ok=True)
+        handler = logging.handlers.RotatingFileHandler(
+            os.path.join(LOG_DIR, 'whattime.log'), maxBytes=512 * 1024, backupCount=2, encoding='utf-8')
+        handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
+        app_log.addHandler(handler)
+        app_log.setLevel(logging.INFO)
+        # 네이티브 크래시도 같은 폴더에 스택을 남긴다.
+        faulthandler.enable(open(os.path.join(LOG_DIR, 'crash.log'), 'a', encoding='utf-8'))
+        threading.excepthook = lambda args: app_log.error(
+            'thread %s crashed', args.thread.name if args.thread else '?',
+            exc_info=(args.exc_type, args.exc_value, args.exc_traceback))
+    except Exception:
+        pass
+
+_setup_app_log()
+app_log.info('start version=%s pid=%d', APP_VERSION, os.getpid())
+atexit.register(lambda: app_log.info('process exit'))
 
 WEBVIEW_STORAGE_PATH = None
 if not IS_MAC:
@@ -595,6 +625,7 @@ class Api:
         self._desktop_error = ''
         self._desktop_payload = None
         self._desktop_reminder_window = None
+        self._quit_requested = False
 
     def start_desktop_reminders(self):
         if self._desktop_started:
@@ -791,7 +822,7 @@ class Api:
             threading.Timer(0, _update).start()
             return True
 
-        self._progress_window = webview.create_window(
+        window = webview.create_window(
             title='지난 수업 진도',
             url=PROGRESS_HTML,
             width=460,
@@ -801,10 +832,15 @@ class Api:
             on_top=True,
             js_api=self,
         )
+        self._progress_window = window
+        app_log.info('progress popup opened')
 
         def on_closed():
-            self._progress_window = None
-        self._progress_window.events.closed += on_closed
+            app_log.info('progress popup closed')
+            # 닫힌 창의 이벤트가 늦게 와도 새로 연 팝업 참조는 지우지 않는다.
+            if self._progress_window is window:
+                self._progress_window = None
+        window.events.closed += on_closed
         return True
 
     def get_progress_popup_data(self):
@@ -829,7 +865,7 @@ class Api:
                 return True
             self._progress_history_window = None
 
-        self._progress_history_window = webview.create_window(
+        window = webview.create_window(
             title='진도 기록',
             url=PROGRESS_HISTORY_HTML,
             width=760,
@@ -838,10 +874,14 @@ class Api:
             resizable=True,
             js_api=self,
         )
+        self._progress_history_window = window
+        app_log.info('progress history opened')
 
         def on_closed():
-            self._progress_history_window = None
-        self._progress_history_window.events.closed += on_closed
+            app_log.info('progress history closed')
+            if self._progress_history_window is window:
+                self._progress_history_window = None
+        window.events.closed += on_closed
         return True
 
     def close_progress_history(self):
@@ -935,7 +975,7 @@ class Api:
                 return True
             self._powerpoint_confirm_window = None
 
-        self._powerpoint_confirm_window = webview.create_window(
+        window = webview.create_window(
             title='PowerPoint 종료 확인',
             url=POWERPOINT_CONFIRM_HTML,
             width=410,
@@ -946,9 +986,14 @@ class Api:
             js_api=self,
         )
 
+        self._powerpoint_confirm_window = window
+        app_log.info('powerpoint confirm opened')
+
         def on_closed():
-            self._powerpoint_confirm_window = None
-        self._powerpoint_confirm_window.events.closed += on_closed
+            app_log.info('powerpoint confirm closed')
+            if self._powerpoint_confirm_window is window:
+                self._powerpoint_confirm_window = None
+        window.events.closed += on_closed
         return True
 
     def close_powerpoint_quit_dialog(self):
@@ -1215,6 +1260,7 @@ class Api:
 
     def save_lesson_progress(self, class_name, subject='', note='', capture=False,
                              lesson_id='', automatic=False):
+        app_log.info('save progress class=%s automatic=%s capture=%s', class_name, bool(automatic), bool(capture))
         class_name = str(class_name or '').strip()
         subject = str(subject or '').strip()
         note = str(note or '').strip()[:2000]
@@ -1463,6 +1509,8 @@ class Api:
             )).start()
 
     def close_app(self):
+        app_log.info('close button pressed')
+        self._quit_requested = True
         if IS_MAC:
             # destroy()는 macOS에서 데드락 발생 가능
             threading.Timer(0.1, os._exit, args=[0]).start()
@@ -1789,8 +1837,25 @@ if not IS_MAC:
 
     main_window.events.shown += on_window_shown
 
+def _relaunch_after_unexpected_stop(started_at):
+    """macOS: 종료 버튼 없이 이벤트 루프가 멈추면 앱을 다시 띄운다."""
+    app_log.error('event loop stopped without quit request; windows=%r',
+                  [w.title for w in webview.windows])
+    bundle = os.path.abspath(os.path.join(os.path.dirname(sys.executable), '..', '..'))
+    # 켜자마자 멈추는 경우 재실행이 반복되지 않도록 1분 이상 실행된 경우에만 되살린다.
+    if not getattr(sys, 'frozen', False) or not bundle.endswith('.app') or time.time() - started_at < 60:
+        return
+    app_log.info('relaunching %s', bundle)
+    subprocess.Popen(['/bin/sh', '-c', 'sleep 1; /usr/bin/open "$0"', bundle],
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
 if __name__ == '__main__':
     if IS_MAC:
+        started_at = time.time()
         webview.start()
+        if not api._quit_requested:
+            _relaunch_after_unexpected_stop(started_at)
+        # 남은 API 스레드가 프로세스 종료를 붙잡지 않게 바로 끝낸다.
+        os._exit(0)
     else:
         webview.start(gui='edgechromium', private_mode=False, storage_path=WEBVIEW_STORAGE_PATH)

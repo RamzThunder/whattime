@@ -371,7 +371,8 @@ let activeLesson = null;
 let observedLesson = null;
 let lessonBeingEdited = null;
 let progressLoadedLessonId = null;
-let isProgressPopupOpen = false;
+// Only the lesson-start "previous progress" popup closes itself when the lesson ends.
+let previousProgressPopupOpen = false;
 const manuallyFinishingLessonIds = new Set();
 let lessonModalLoadToken = 0;
 
@@ -789,14 +790,15 @@ function showPreviewSavedProgress(lesson, note, imageDataUrl='') {
     });
 }
 
-function openProgressWindow(payload) {
-    isProgressPopupOpen = true;
+function openProgressWindow(payload, dismissWithLesson=false) {
+    // Saved results and history share this window; they must stay until the user closes them.
+    previousProgressPopupOpen = dismissWithLesson;
     window.pywebview.api.open_progress_popup(payload);
 }
 
 function dismissPreviousProgress() {
-    if (!isProgressPopupOpen) return;
-    isProgressPopupOpen = false;
+    if (!previousProgressPopupOpen) return;
+    previousProgressPopupOpen = false;
     window.pywebview.api.close_progress_popup();
 }
 
@@ -825,7 +827,7 @@ async function showPreviousProgress(lesson, previewDemo=false) {
                 meta: '지난 수업 · 예시 기록',
                 note: '예: 교과서 42쪽까지 · 다음 시간 3번 문제부터',
                 image_data_url: ''
-            });
+            }, true);
             return;
         }
         if (!record || record.lesson_id === lesson.id) return;
@@ -836,7 +838,7 @@ async function showPreviousProgress(lesson, previewDemo=false) {
             meta: [record.saved_at_label, record.subject].filter(Boolean).join(' · '),
             note: record.note || (record.has_image ? '' : '저장된 메모나 화면이 없습니다.'),
             image_data_url: record.image_data_url || ''
-        });
+        }, true);
     } catch (e) {}
 }
 
