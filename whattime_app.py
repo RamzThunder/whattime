@@ -18,11 +18,12 @@ import logging.handlers
 from schedule_documents import parse_hwpx_schedule
 from desktop_reminders import ReminderEngine, current_lesson, input_idle_seconds
 from school_schedules import DEFAULT_SOURCE, SubscriptionStore, atomic_json
+import comci_client
 from personal_timetable import apply_comci_result, comci_target, comci_weekly_due
 import notion_archive
 
 IS_MAC = sys.platform == 'darwin'
-APP_VERSION = '3.1.5'
+APP_VERSION = '3.1.6'
 UPDATE_API_URL = 'https://api.github.com/repos/RamzThunder/whattime-releases/releases/latest'
 
 # ─────────────────────────────────────────
@@ -247,75 +248,14 @@ def _urlopen(req_or_url, timeout=None):
     import urllib.request
     return urllib.request.urlopen(req_or_url, timeout=timeout, context=_ssl_context())
 
-COMCI_API_URL = 'http://comci.net:4082/36179_T'
-COMCI_SEARCH_URL = 'http://comci.net:4082/36179'
 DEFAULT_COMCI_SCHOOL_CODE = None
 DEFAULT_COMCI_TEACHER_NUMBER = None
 
-def _decode_comci_json(raw):
-    text = raw.decode('utf-8', errors='replace').strip('\x00 \t\r\n')
-    decoder = json.JSONDecoder()
-    index = 0
-    first = None
-    while index < len(text):
-        data, end = decoder.raw_decode(text[index:])
-        if first is None:
-            first = data
-        if isinstance(data, dict) and '자료542' in data:
-            return data
-        index += end
-        while index < len(text) and text[index] in '\x00 \t\r\n':
-            index += 1
-    return first
-
 def search_comci_schools(query):
-    import urllib.parse
-    import urllib.request
     query = str(query or '').strip()
     if not query:
         raise ValueError('검색할 학교 이름을 입력해 주세요.')
-
-    encoded = urllib.parse.quote(query, encoding='euc-kr', safe='')
-    req = urllib.request.Request(
-        f'{COMCI_SEARCH_URL}?17384l{encoded}',
-        headers={
-            'User-Agent': 'WhatTime/' + APP_VERSION,
-            'Accept': 'application/json,text/plain,*/*',
-            'Referer': 'http://comci.net:4082/th',
-            'x-requested-with': 'XMLHttpRequest',
-        },
-    )
-    with _urlopen(req, timeout=10) as response:
-        data = _decode_comci_json(response.read())
-
-    results = []
-    for item in (data or {}).get('학교검색', []):
-        if len(item) >= 4 and item[1] != '알림' and item[3]:
-            results.append({
-                'region': str(item[1]),
-                'school_name': str(item[2]),
-                'school_code': int(item[3]),
-            })
-    return results
-
-def _fetch_comci_raw(school_code, date_index=1):
-    import urllib.request
-    payload = f'73629_{int(school_code)}_0_{int(date_index)}'
-    query = base64.b64encode(payload.encode('ascii')).decode('ascii')
-    req = urllib.request.Request(
-        f'{COMCI_API_URL}?{query}',
-        headers={
-            'User-Agent': 'WhatTime/' + APP_VERSION,
-            'Accept': 'application/json,text/plain,*/*',
-            'Referer': 'http://comci.net:4082/th',
-            'x-requested-with': 'XMLHttpRequest',
-        },
-    )
-    with _urlopen(req, timeout=10) as response:
-        data = _decode_comci_json(response.read())
-    if not isinstance(data, dict) or '자료542' not in data:
-        raise ValueError('학교코드를 확인할 수 없거나 시간표 자료가 없습니다.')
-    return data
+    return comci_client.search_schools(query)
 
 def fetch_comci_teacher_schedule(school_code=DEFAULT_COMCI_SCHOOL_CODE, teacher_number=DEFAULT_COMCI_TEACHER_NUMBER):
     try:
@@ -326,14 +266,10 @@ def fetch_comci_teacher_schedule(school_code=DEFAULT_COMCI_SCHOOL_CODE, teacher_
     if school_code <= 0 or teacher_number <= 0:
         raise ValueError('학교코드와 교사 번호는 1 이상의 숫자여야 합니다.')
 
-    data = _fetch_comci_raw(school_code, 1)
-    today_index = int(data.get('오늘r') or 1)
-    if today_index != 1:
-        data = _fetch_comci_raw(school_code, today_index)
-
-    teachers = data.get('자료446') or []
-    teacher_slots = data.get('자료542') or []
-    subjects = data.get('자료492') or []
+    data = comci_client.fetch_teacher_data(school_code)
+    teachers = data['teachers']
+    teacher_slots = data['teacher_slots']
+    subjects = data['subjects']
     if teacher_number >= len(teachers) or teacher_number >= len(teacher_slots):
         max_teacher = max(0, min(len(teachers), len(teacher_slots)) - 1)
         raise ValueError(f'교사 번호를 찾을 수 없습니다. 입력 가능한 범위는 1~{max_teacher}입니다.')
@@ -366,14 +302,14 @@ def fetch_comci_teacher_schedule(school_code=DEFAULT_COMCI_SCHOOL_CODE, teacher_
             })
         personal[str(day)] = entries
 
-    raw_school_name = str(data.get('학교명') or '')
+    raw_school_name = data['school_name']
     return {
         'school_code': school_code,
         'school_name': raw_school_name or str(school_code),
         'school_name_hidden': raw_school_name.startswith('컴시간'),
         'teacher_name': teachers[teacher_number],
         'teacher_number': teacher_number,
-        'updated_at': data.get('자료244') or '',
+        'updated_at': data['updated_at'],
         'personal': personal,
     }
 
