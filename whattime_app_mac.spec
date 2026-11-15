@@ -63,8 +63,8 @@ app = BUNDLE(
     icon='icon.icns',
     bundle_identifier='com.whattime.app',
     info_plist={
-        'CFBundleShortVersionString': '3.1.6',
-        'CFBundleVersion': '3.1.6',
+        'CFBundleShortVersionString': '3.1.7',
+        'CFBundleVersion': '3.1.7',
         'CFBundleDisplayName': '지금 몇교시야',
         'CFBundleName': '지금 몇교시야',
     },

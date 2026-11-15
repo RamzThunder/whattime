@@ -3,6 +3,9 @@
 컴시간은 2026-11부터 요청마다 페이지에서 받은 토큰(X-Hour-Token)을 요구하고,
 응답을 AES-256-CBC + HMAC-SHA256으로 암호화해서 보낸다. 요청 주소 번호와 키는
 난독화된 페이지 스크립트 안에 들어 있고 바뀔 수 있어서, 매번 페이지에서 읽어 온다.
+
+2026-11 중순부터는 학교명·교사명·과목명·날짜 같은 글자 자료도 따로 감싸서 보낸다
+(QnmsbChange: base64 → 반복 XOR 키 → EUC-KR). 이 키도 페이지에서 읽는다.
 """
 import base64
 import hashlib
@@ -79,6 +82,11 @@ class _Page:
         order = [int(i) for i in re.findall(r'a\[(\d+)\]', key.group(1))]
         self.key = bytes.fromhex(''.join(pieces[i] for i in order))
 
+        # 글자 자료 복호화 키: QnmsbChange 안의 String.fromCharCode(...)
+        text_key = re.search(
+            r"function QnmsbChange\(.*?String\.fromCharCode\(([\d,\s]+)\)", html, re.S)
+        self.text_key = bytes(int(n) for n in text_key.group(1).split(',')) if text_key else None
+
         # 검색 결과의 숫자 중 진짜 학교코드 위치: floor(항목[0] / 나눗수) + 더할수
         code_at = re.search(r"Math\.floor\(학교명단\[i\]\[0\]/(\d+)\)\+(\d+)", html)
         self.code_index = (int(code_at.group(1)), int(code_at.group(2))) if code_at else None
@@ -88,10 +96,10 @@ class _Page:
             match = re.search(pattern, html)
             return match.group(1) if match else default
         self.fields = {
-            'teachers': field(r"자료\.(자료\d+)\[교사\]\+\" 시간표", '자료148'),
+            'teachers': field(r"자료\.(자료\d+)\[교사\]\)?\+\" 시간표", '자료136'),
             'teacher_slots': field(r"교사자료=Q자료\(자료\.(자료\d+)\[교사\]", '자료171'),
             'subjects': field(r"과목명=Q과목명\(자료\.(자료\d+)\[sb\]\)", '자료175'),
-            'updated_at': field(r"'수정일: '\+H시간표\.(자료\d+)", '자료158'),
+            'updated_at': field(r"'수정일: '\+(?:QnmsbChange\()?H시간표\.(자료\d+)", '자료165'),
         }
 
     def _get(self, url, ajax=True):
@@ -115,6 +123,17 @@ class _Page:
             if body == 'HOUR_TOKEN_REQUIRED':
                 raise ComciError('컴시간 접속 확인에 실패했습니다. 잠시 후 다시 시도해 주세요.') from error
             raise
+
+    def text(self, value):
+        """QnmsbChange로 감싼 글자 자료를 푼다. 감싸지 않은 값은 그대로 돌려준다."""
+        if not self.text_key or not isinstance(value, str) or not value:
+            return value
+        try:
+            raw = base64.b64decode(value, validate=True)
+            key = self.text_key
+            return bytes(b ^ key[i % len(key)] for i, b in enumerate(raw)).decode('euc-kr')
+        except (ValueError, UnicodeDecodeError):
+            return value
 
     def request(self, path, query):
         raw = self._get(f'{BASE_URL}/{path}?{query}')
@@ -172,12 +191,13 @@ def fetch_teacher_data(school_code, timeout=10):
     f = page.fields
     if f['teacher_slots'] not in data or f['teachers'] not in data:
         raise ComciError('컴시간 자료 형식이 바뀌어 교사 시간표를 찾지 못했습니다.')
+    text = page.text
     return {
-        'school_name': str(data.get('학교명') or ''),
-        'teachers': data.get(f['teachers']) or [],
+        'school_name': str(text(data.get('학교명')) or ''),
+        'teachers': [text(name) for name in data.get(f['teachers']) or []],
         'teacher_slots': data.get(f['teacher_slots']) or [],
-        'subjects': data.get(f['subjects']) or [],
-        'updated_at': str(data.get(f['updated_at']) or ''),
+        'subjects': [text(name) for name in data.get(f['subjects']) or []],
+        'updated_at': str(text(data.get(f['updated_at'])) or ''),
     }
 
 
@@ -192,7 +212,8 @@ def search_schools(query, timeout=10):
 
     results = []
     for item in (data or {}).get('학교검색', []):
-        if len(item) < 4 or item[1] == '알림':
+        item = [page.text(value) for value in item]
+        if len(item) < 4 or item[0] == 0 or item[1] == '알림':
             continue
         if page.code_index:
             divisor, offset = page.code_index

@@ -28,6 +28,19 @@ PAGE_JS = (
     "과목명=Q과목명(자료.자료7[sb]); $('#수정일').text('수정일: '+H시간표.자료6);"
 )
 
+# 2026-11 중순 형식: 글자 자료를 QnmsbChange로 감싼다.
+TEXT_KEY = [112, 53, 35, 89, 107, 68, 112, 64, 108, 77, 47, 104]
+PAGE_JS_V2 = PAGE_JS.replace("p+=자료.자료9[교사]+", "p+=QnmsbChange(자료.자료9[교사])+").replace(
+    "'수정일: '+H시간표.자료6", "'수정일: '+QnmsbChange(H시간표.자료6)") + (
+    "function QnmsbChange(암호문) { if(암호문==undefined) return ''; var 키=String.fromCharCode("
+    + ",".join(map(str, TEXT_KEY)) + "); var 바이트문자열=atob(암호문); }"
+)
+
+
+def wrap_text(text):
+    raw = text.encode('euc-kr')
+    return base64.b64encode(bytes(b ^ TEXT_KEY[i % len(TEXT_KEY)] for i, b in enumerate(raw))).decode()
+
 
 class FakePage(c._Page):
     def __init__(self, html):
@@ -62,6 +75,21 @@ class PageTest(unittest.TestCase):
         self.assertEqual(page.code_index, (100, 2))
         self.assertEqual(page.fields, {'teachers': '자료9', 'teacher_slots': '자료8',
                                        'subjects': '자료7', 'updated_at': '자료6'})
+
+    def test_reads_wrapped_text_fields(self):
+        page = FakePage('<script>' + obfuscate(PAGE_JS_V2) + '</script>')
+        self.assertEqual(page.text_key, bytes(TEXT_KEY))
+        self.assertEqual(page.fields, {'teachers': '자료9', 'teacher_slots': '자료8',
+                                       'subjects': '자료7', 'updated_at': '자료6'})
+        self.assertEqual(page.text(wrap_text('조암중학교')), '조암중학교')
+        self.assertEqual(page.text(wrap_text('84946')), '84946')
+        self.assertEqual(page.text(''), '')
+        self.assertEqual(page.text(0), 0)
+
+    def test_text_passes_through_without_key(self):
+        page = FakePage('<script>' + PAGE_JS + '</script>')
+        self.assertIsNone(page.text_key)
+        self.assertEqual(page.text('국어'), '국어')
 
     def test_decrypt_checks_hmac(self):
         page = FakePage('<script>' + PAGE_JS + '</script>')
