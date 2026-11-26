@@ -6,6 +6,9 @@
 
 2026-11 중순부터는 학교명·교사명·과목명·날짜 같은 글자 자료도 따로 감싸서 보낸다
 (QnmsbChange: base64 → 반복 XOR 키 → EUC-KR). 이 키도 페이지에서 읽는다.
+
+2026-11 말부터는 함수·자료 이름이 무작위로 바뀌고, 요청이 POST(본문에 base64)로,
+암호문 머리말이 'enc5'에서 숫자('3901' 등)로 바뀌었다. 그래서 이름 대신 모양으로 찾는다.
 """
 import base64
 import hashlib
@@ -58,6 +61,34 @@ def _search(pattern, text, what):
     return match
 
 
+def _endpoint(chunk, html):
+    """$.ajax를 부르는 함수 하나에서 주소·방식·앞뒤 글자를 읽는다."""
+    head = re.match(r"function\s+\w+\(([^)]*)\)", chunk)
+    url = re.search(r"url:\s*'\./([^'?]+)", chunk)
+    if not head or not url:
+        return None
+    method = 'GET'
+    found = re.search(r"method:\s*(?:'(\w+)'|(\w+))", chunk)
+    if found:
+        if found.group(1):
+            method = found.group(1).upper()
+        else:
+            value = re.search(r"\b" + re.escape(found.group(2)) + r"\s*=\s*'(\w+)'", html)
+            method = value.group(1).upper() if value else 'GET'
+    body = re.search(r"data:\s*(.*?)\s*,\s*headers", chunk, re.S)
+    expr = body.group(1) if body else chunk[url.end():]
+    suffix = re.search(r"'(_\w+)'\)", expr) or re.search(r"\+'(_\w+)'\)", chunk)
+    prefix = re.search(r"'(\d+\w?)'\+encodeURIComponent\(sc\)", chunk)
+    return {
+        'params': len([p for p in head.group(1).split(',') if p.strip()]),
+        'path': url.group(1),
+        'method': method if body else 'GET',
+        'quote': 'encodeURIComponent(btoa(' in chunk,
+        'suffix': suffix.group(1) if suffix else '',
+        'prefix': prefix.group(1) if prefix else None,
+    }
+
+
 class _Page:
     """컴시간 페이지 하나에서 읽어 낸 토큰·주소·키."""
 
@@ -69,11 +100,26 @@ class _Page:
         html = _deobfuscate(raw.decode('euc-kr', errors='replace'))
 
         self.token = _search(r"__HourRequestToken\s*=\s*'([^']+)'", html, '접속 토큰').group(1)
-        self.timetable_path = _search(
-            r"function QAjaxTimetable\(.*?url:'\./([^'?]+)\?", html, '시간표 주소').group(1)
-        self.school_prefix = _search(r"sc_data\('(\d+_)'", html, '학교 코드 앞자리').group(1)
-        search = re.search(r"function QAjaxSchool\(.*?url:'\./([^'?]+)\?.*?btoa\('([^']+)'", html, re.S)
-        self.search_path, self.search_prefix = search.groups() if search else (None, None)
+
+        # 함수 이름은 매번 무작위로 바뀌므로 $.ajax를 부르는 함수를 모양으로 찾는다.
+        self.timetable = self.search = None
+        for chunk in re.split(r'(?=\bfunction\s)', html):
+            if '$.ajax(' not in chunk:
+                continue
+            endpoint = _endpoint(chunk, html)
+            if endpoint is None:
+                continue
+            if endpoint['prefix'] is not None:
+                self.search = self.search or endpoint
+            elif endpoint['params'] >= 4:
+                self.timetable = self.timetable or endpoint
+        if self.timetable is None:
+            raise ComciError('컴시간 페이지 구조가 바뀌어 시간표 주소을(를) 찾지 못했습니다.')
+        self.timetable_path = self.timetable['path']
+        self.search_path = self.search['path'] if self.search else None
+        self.search_prefix = self.search['prefix'] if self.search else None
+
+        self.school_prefix = _search(r"\b\w+\('(\d+_)',", html, '학교 코드 앞자리').group(1)
 
         key = _search(
             r"var key=CryptoJS\.enc\.Hex\.parse\(\(function\(a\)\{return ([a\[\]\d+]+);\}\)\((\[[^\]]+\])\)\)",
@@ -82,27 +128,35 @@ class _Page:
         order = [int(i) for i in re.findall(r'a\[(\d+)\]', key.group(1))]
         self.key = bytes.fromhex(''.join(pieces[i] for i in order))
 
-        # 글자 자료 복호화 키: QnmsbChange 안의 String.fromCharCode(...)
+        # base64로 오는 암호문 머리말 (예전 'enc5', 2026-11 말부터 '3901' 같은 숫자)
+        b64_tag = re.search(r"parts\[0\]\s*===?\s*'([^']+)'", html)
+        self.b64_tags = {'enc5', b64_tag.group(1)} if b64_tag else {'enc5'}
+
+        # 글자 자료 복호화 키: String.fromCharCode(...) 바로 뒤에 atob로 푸는 함수
         text_key = re.search(
-            r"function QnmsbChange\(.*?String\.fromCharCode\(([\d,\s]+)\)", html, re.S)
+            r"String\.fromCharCode\(([\d,\s]+)\)[^;]*;\s*var [^=;]+=atob\(", html)
         self.text_key = bytes(int(n) for n in text_key.group(1).split(',')) if text_key else None
 
         # 검색 결과의 숫자 중 진짜 학교코드 위치: floor(항목[0] / 나눗수) + 더할수
-        code_at = re.search(r"Math\.floor\(학교명단\[i\]\[0\]/(\d+)\)\+(\d+)", html)
+        code_at = re.search(r"Math\.floor\([\w.]+\[i\]\[0\]/(\d+)\)\+(\d+)", html)
         self.code_index = (int(code_at.group(1)), int(code_at.group(2))) if code_at else None
 
-        # 응답 속 자료 이름(자료NNN)은 페이지 버전마다 바뀐다.
-        def field(pattern, default):
-            match = re.search(pattern, html)
-            return match.group(1) if match else default
+        # 응답 속 자료 이름(자료NNN, ABC123 등)과 감싸는 함수 이름은 페이지 버전마다 바뀐다.
+        def field(patterns, default):
+            for pattern in patterns:
+                match = re.search(pattern, html, re.S)
+                if match:
+                    return match.group(1)
+            return default
         self.fields = {
-            'teachers': field(r"자료\.(자료\d+)\[교사\]\)?\+\" 시간표", '자료136'),
-            'teacher_slots': field(r"교사자료=Q자료\(자료\.(자료\d+)\[교사\]", '자료171'),
-            'subjects': field(r"과목명=Q과목명\(자료\.(자료\d+)\[sb\]\)", '자료175'),
-            'updated_at': field(r"'수정일: '\+(?:QnmsbChange\()?H시간표\.(자료\d+)", '자료165'),
+            'teachers': field([r"function 교사명_설정하기\(.*?자료\.(\w+)\[i\]",
+                               r"자료\.(\w+)\[교사\]\)?\+\" 시간표"], '자료136'),
+            'teacher_slots': field([r"교사자료=\w*\(자료\.(\w+)\[교사\]"], '자료171'),
+            'subjects': field([r"과목명=\w*\(자료\.(\w+)\[sb\]\)"], '자료175'),
+            'updated_at': field([r"'수정일: '\+(?:\w+\()?\w+\.(\w+)"], '자료165'),
         }
 
-    def _get(self, url, ajax=True):
+    def _get(self, url, ajax=True, body=None):
         headers = {'User-Agent': USER_AGENT, 'Accept': '*/*'}
         if ajax:
             headers.update({
@@ -110,7 +164,11 @@ class _Page:
                 'X-Requested-With': 'XMLHttpRequest',
                 'X-Hour-Token': self.token,
             })
-        req = urllib.request.Request(url, headers=headers)
+        if body is not None:
+            headers['Content-Type'] = 'text/plain; charset=UTF-8'
+            body = body.encode('ascii')
+        req = urllib.request.Request(url, data=body, headers=headers,
+                                     method='POST' if body is not None else 'GET')
         try:
             with self.opener.open(req, timeout=self.timeout) as response:
                 return response.read()
@@ -135,21 +193,31 @@ class _Page:
         except (ValueError, UnicodeDecodeError):
             return value
 
-    def request(self, path, query):
-        raw = self._get(f'{BASE_URL}/{path}?{query}')
+    def request(self, endpoint, payload):
+        """payload(평문)를 페이지와 같은 방식으로 감싸 보내고 복호화한 응답을 돌려준다."""
+        encoded = base64.b64encode((payload + endpoint['suffix']).encode('ascii')).decode('ascii')
+        if endpoint['quote']:
+            encoded = urllib.parse.quote(encoded, safe='')
+        url = f"{BASE_URL}/{endpoint['path']}"
+        if endpoint['method'] == 'POST':
+            raw = self._get(url, body=encoded)
+        else:
+            raw = self._get(f'{url}?{encoded}')
         return self.decrypt(raw.decode('utf-8', errors='replace').rstrip('\x00 \t\r\n'))
 
     def decrypt(self, text):
-        if not (text.startswith('enc5:') or text.startswith('enc1:')):
+        head = text.split(':', 1)[0]
+        if head != 'enc1' and head not in self.b64_tags:
             return text
         parts = text.split(':')
         if len(parts) != 4:
             raise ComciError('컴시간 응답 형식이 올바르지 않습니다.')
-        decode = base64.b64decode if parts[0] == 'enc5' else bytes.fromhex
+        use_b64 = parts[0] in self.b64_tags
+        decode = base64.b64decode if use_b64 else bytes.fromhex
         iv, ciphertext = decode(parts[1]), decode(parts[2])
         tag = hmac.new(hashlib.sha256(self.key).digest(), ':'.join(parts[:3]).encode('ascii'),
                        hashlib.sha256).digest()
-        expected = base64.b64encode(tag).decode() if parts[0] == 'enc5' else tag.hex()
+        expected = base64.b64encode(tag).decode() if use_b64 else tag.hex()
         if not hmac.compare_digest(expected, parts[3]):
             raise ComciError('컴시간 응답 검증에 실패했습니다.')
         plain = _aes_cbc_decrypt(self.key, iv, ciphertext)
@@ -177,9 +245,8 @@ def fetch_teacher_data(school_code, timeout=10):
     page = _Page(_opener(), 'th', timeout)
 
     def get(index):
-        payload = f'{page.school_prefix}{int(school_code)}_0_{int(index)}_enc5'
-        query = base64.b64encode(payload.encode('ascii')).decode('ascii')
-        return _decode_json(page.request(page.timetable_path, query))
+        payload = f'{page.school_prefix}{int(school_code)}_0_{int(index)}'
+        return _decode_json(page.request(page.timetable, payload))
 
     data = get(1)
     if not isinstance(data, dict) or not data:
@@ -206,9 +273,8 @@ def search_schools(query, timeout=10):
     page = _Page(_opener(), 'st', timeout)
     if not page.search_path:
         raise ComciError('컴시간 페이지 구조가 바뀌어 학교 검색 주소를 찾지 못했습니다.')
-    payload = page.search_prefix + urllib.parse.quote(query, safe="-_.!~*'()") + '_enc5'
-    encoded = urllib.parse.quote(base64.b64encode(payload.encode('ascii')).decode('ascii'), safe='')
-    data = _decode_json(page.request(page.search_path, encoded))
+    payload = page.search_prefix + urllib.parse.quote(query, safe="-_.!~*'()")
+    data = _decode_json(page.request(page.search, payload))
 
     results = []
     for item in (data or {}).get('학교검색', []):
